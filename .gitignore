@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+data/
+weights/
+outputs_local/
+workbook/
+.DS_Store
+.vscode/settings.json
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
