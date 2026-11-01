@@ -1,4 +1,4 @@
-.PHONY: install test step-02
+.PHONY: install test step-02 step-04
 
 install:
 	uv pip install -e ".[dev]"
@@ -8,3 +8,6 @@ test:
 
 step-02:
 	python scripts/generate_synthetic.py
+
+step-04:
+	python scripts/render_video.py
