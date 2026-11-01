@@ -1,4 +1,4 @@
-.PHONY: install test step-02 step-04
+.PHONY: install test step-02 step-04 step-05
 
 install:
 	uv pip install -e ".[dev]"
@@ -11,3 +11,6 @@ step-02:
 
 step-04:
 	python scripts/render_video.py
+
+step-05:
+	python scripts/inspect_dataset.py
