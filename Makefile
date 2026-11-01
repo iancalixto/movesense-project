@@ -1,4 +1,4 @@
-.PHONY: install test step-02 step-04 step-05
+.PHONY: install test step-02 step-04 step-05 step-06
 
 install:
 	uv pip install -e ".[dev]"
@@ -14,3 +14,6 @@ step-04:
 
 step-05:
 	python scripts/inspect_dataset.py
+
+step-06:
+	python scripts/run_detector.py
