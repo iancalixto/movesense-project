@@ -1,4 +1,4 @@
-.PHONY: install test step-02 step-04 step-05 step-06
+.PHONY: install test step-02 step-04 step-05 step-06 step-07
 
 install:
 	uv pip install -e ".[dev]"
@@ -17,3 +17,6 @@ step-05:
 
 step-06:
 	python scripts/run_detector.py
+
+step-07:
+	python scripts/run_tracker.py
