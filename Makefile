@@ -20,3 +20,6 @@ step-06:
 
 step-07:
 	python scripts/run_tracker.py
+
+step-08:
+	python scripts/extract_features.py
