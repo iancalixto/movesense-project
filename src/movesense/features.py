@@ -2,9 +2,43 @@
 
 import numpy as np
 import pandas as pd
+from scipy.signal import savgol_filter
+
+FEATURE_DF_COLUMNS: list[str] = [
+    "track_id",
+    "duration_frames",
+    "mean_speed",
+    "max_speed",
+    "std_speed",
+    "mean_acceleration",
+    "confinement_radius",
+]
 
 
-def extract_track_kinematics(track_df: pd.DataFrame, fps: int = 25) -> dict:
+def smooth_trajectory(coords: np.ndarray, window: int = 9) -> np.ndarray:
+    """Smooth a 1D coordinate sequence using a linear Savitzky-Golay filter.
+
+    Uses polyorder=1 so constant-velocity straight lines are preserved without
+    edge distortion while suppressing high-frequency frame-to-frame jitter.
+    """
+    arr = np.asarray(coords, dtype=float)
+    if window <= 2 or len(arr) < 3:
+        return arr.copy()
+
+    win = min(int(window), len(arr))
+    if win % 2 == 0:
+        win -= 1
+    if win < 3:
+        return arr.copy()
+
+    return savgol_filter(arr, window_length=win, polyorder=1)
+
+
+def extract_track_kinematics(
+    track_df: pd.DataFrame,
+    fps: int = 25,
+    smooth_window: int = 1,
+) -> dict:
     """Extract physical kinematic metrics for a single pedestrian trajectory.
 
     Parameters
@@ -14,6 +48,8 @@ def extract_track_kinematics(track_df: pd.DataFrame, fps: int = 25) -> dict:
         with columns: frame, (id or track_id), x, y, w, h.
     fps : int, default 25
         Video frame rate for real-time physics scaling.
+    smooth_window : int, default 1
+        Temporal smoothing window length (>= 3 enables Savitzky-Golay smoothing).
 
     Returns
     -------
@@ -28,9 +64,9 @@ def extract_track_kinematics(track_df: pd.DataFrame, fps: int = 25) -> dict:
     track_id = int(track_df[id_col].iloc[0])
     duration_frames = len(track_df)
 
-    # 1. Posição do centroide ao longo do tempo
-    cx = (track_df["x"] + track_df["w"] / 2.0).to_numpy()
-    cy = (track_df["y"] + track_df["h"] / 2.0).to_numpy()
+    # 1. Posição do centroide ao longo do tempo (opcionalmente suavizada)
+    cx = smooth_trajectory((track_df["x"] + track_df["w"] / 2.0).to_numpy(), window=smooth_window)
+    cy = smooth_trajectory((track_df["y"] + track_df["h"] / 2.0).to_numpy(), window=smooth_window)
 
     if duration_frames < 2:
         return {
@@ -43,20 +79,22 @@ def extract_track_kinematics(track_df: pd.DataFrame, fps: int = 25) -> dict:
             "confinement_radius": 0.0,
         }
 
-    # 2. Deslocamentos euclidianos (pixels)
+    # 2. Deslocamentos euclidianos divididos pelo delta real de frames (evita picos após falhas)
+    frames = track_df["frame"].to_numpy()
+    dt = np.maximum(np.diff(frames), 1)
     dx = np.diff(cx)
     dy = np.diff(cy)
     step_distances = np.sqrt(dx**2 + dy**2)
 
     # 3. Velocidades instantâneas (pixels/segundo)
-    speeds = step_distances * fps
+    speeds = (step_distances / dt) * fps
     mean_speed = float(np.mean(speeds))
     max_speed = float(np.max(speeds))
     std_speed = float(np.std(speeds))
 
     # 4. Acelerações (pixels/segundo^2)
     if len(speeds) >= 2:
-        accels = np.diff(speeds) * fps
+        accels = (np.diff(speeds) / dt[1:]) * fps
         mean_accel = float(np.mean(accels))
     else:
         mean_accel = 0.0
@@ -76,7 +114,12 @@ def extract_track_kinematics(track_df: pd.DataFrame, fps: int = 25) -> dict:
     }
 
 
-def extract_trajectory_features(tracks_df: pd.DataFrame, fps: int = 25) -> pd.DataFrame:
+def extract_trajectory_features(
+    tracks_df: pd.DataFrame,
+    fps: int = 25,
+    smooth_window: int = 1,
+    min_frames: int = 1,
+) -> pd.DataFrame:
     """Extract kinematic feature table for all pedestrians in a tracks DataFrame.
 
     Parameters
@@ -85,18 +128,27 @@ def extract_trajectory_features(tracks_df: pd.DataFrame, fps: int = 25) -> pd.Da
         DataFrame of tracks with columns: frame, (id or track_id), x, y, w, h.
     fps : int, default 25
         Video frame rate.
+    smooth_window : int, default 1
+        Temporal smoothing window length (>= 3 enables Savitzky-Golay smoothing).
+    min_frames : int, default 1
+        Minimum number of detections required for a track to be retained.
 
     Returns
     -------
     pd.DataFrame
-        Summary table with one row per unique track_id and kinematic columns.
+        Summary table with one row per valid unique track_id and kinematic columns.
     """
+    if tracks_df.empty:
+        return pd.DataFrame(columns=FEATURE_DF_COLUMNS)
+
     id_col = "track_id" if "track_id" in tracks_df.columns else "id"
     records = []
 
     for _, group in tracks_df.groupby(id_col):
+        if len(group) < min_frames:
+            continue
         sorted_group = group.sort_values(by="frame").reset_index(drop=True)
-        metrics = extract_track_kinematics(sorted_group, fps=fps)
+        metrics = extract_track_kinematics(sorted_group, fps=fps, smooth_window=smooth_window)
         records.append(metrics)
 
-    return pd.DataFrame(records)
+    return pd.DataFrame(records) if records else pd.DataFrame(columns=FEATURE_DF_COLUMNS)

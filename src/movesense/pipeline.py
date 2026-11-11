@@ -158,6 +158,8 @@ def run_video_pipeline(
     classifier: BehaviourClassifier | None = None,
     fps: float | None = None,
     max_frames: int | None = None,
+    smooth_window: int = 1,
+    min_track_frames: int = 1,
 ) -> dict:
     """Run detection, tracking, feature extraction, behaviour classification, and video rendering."""
     src_path = pathlib.Path(input_path)
@@ -193,7 +195,7 @@ def run_video_pipeline(
 
     tracks_df = pd.DataFrame(track_records)
 
-    # Extração de features e classificação comportamental por track
+    # Extração de features (com suavização/filtro opcionais) e classificação comportamental
     if tracks_df.empty:
         predictions_df = pd.DataFrame(
             columns=["track_id", *FEATURE_COLUMNS, "predicted_behaviour"]
@@ -201,14 +203,28 @@ def run_video_pipeline(
         behaviour_map: dict[int, str] = {}
         tracks_by_frame: dict[int, pd.DataFrame] = {}
     else:
-        features_df = extract_trajectory_features(tracks_df, fps=int(round(effective_fps)))
-        features_df["predicted_behaviour"] = classifier.predict(features_df)
-        predictions_df = features_df
-        behaviour_map = {
-            int(row["track_id"]): str(row["predicted_behaviour"])
-            for _, row in predictions_df.iterrows()
-        }
-        tracks_by_frame = {f: group for f, group in tracks_df.groupby("frame")}
+        features_df = extract_trajectory_features(
+            tracks_df,
+            fps=int(round(effective_fps)),
+            smooth_window=smooth_window,
+            min_frames=min_track_frames,
+        )
+        if features_df.empty:
+            predictions_df = pd.DataFrame(
+                columns=["track_id", *FEATURE_COLUMNS, "predicted_behaviour"]
+            )
+            behaviour_map = {}
+            tracks_by_frame = {}
+        else:
+            features_df["predicted_behaviour"] = classifier.predict(features_df)
+            predictions_df = features_df
+            valid_ids = set(predictions_df["track_id"].astype(int))
+            tracks_df = tracks_df[tracks_df["id"].isin(valid_ids)].reset_index(drop=True)
+            behaviour_map = {
+                int(row["track_id"]): str(row["predicted_behaviour"])
+                for _, row in predictions_df.iterrows()
+            }
+            tracks_by_frame = {f: group for f, group in tracks_df.groupby("frame")}
 
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     predictions_df.to_csv(out_csv, index=False)
