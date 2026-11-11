@@ -1,4 +1,4 @@
-.PHONY: install test step-02 step-04 step-05 step-06 step-07 step-08 step-09
+.PHONY: install test step-02 step-04 step-05 step-06 step-07 step-08 step-09 step-10 step-11 step-12
 
 install:
 	uv pip install -e ".[dev]"
@@ -32,3 +32,6 @@ step-10:
 
 step-11:
 	python scripts/run_video.py
+
+step-12:
+	python scripts/evaluate_mot17.py
