@@ -29,3 +29,6 @@ step-09:
 
 step-10:
 	python scripts/run_error_propagation.py
+
+step-11:
+	python scripts/run_video.py
