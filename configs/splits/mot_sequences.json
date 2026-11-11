@@ -1,0 +1,35 @@
+{
+    "mot17_baseline": {
+        "description": "General pedestrian tracking baseline (unique FRCNN sequences only, zero variant leakage)",
+        "preferred_variant": "FRCNN",
+        "dev": [
+            "MOT17-02-FRCNN",
+            "MOT17-05-FRCNN",
+            "MOT17-09-FRCNN",
+            "MOT17-10-FRCNN"
+        ],
+        "eval": [
+            "MOT17-04-FRCNN",
+            "MOT17-11-FRCNN",
+            "MOT17-13-FRCNN"
+        ],
+        "camera_metadata": {
+            "MOT17-02-FRCNN": "stationary",
+            "MOT17-04-FRCNN": "stationary",
+            "MOT17-05-FRCNN": "moving",
+            "MOT17-09-FRCNN": "stationary",
+            "MOT17-10-FRCNN": "moving",
+            "MOT17-11-FRCNN": "moving",
+            "MOT17-13-FRCNN": "moving"
+        }
+    },
+    "mot20_crowding_stress": {
+        "description": "Crowding and heavy occlusion stress test (reported separately from MOT17)",
+        "eval": [
+            "MOT20-01",
+            "MOT20-02",
+            "MOT20-03",
+            "MOT20-05"
+        ]
+    }
+}

@@ -1,0 +1,2 @@
+dataset,sequences,frames_evaluated,total_gt,true_positives,false_positives,false_negatives,id_switches,mota,precision,recall
+MOT17,7,420,8287,2395,263,5892,55,0.2506335223844576,0.9010534236267871,0.28900687824303123
