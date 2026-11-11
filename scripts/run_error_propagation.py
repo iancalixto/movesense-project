@@ -70,11 +70,14 @@ def main() -> None:
     ]
 
     summary_rows = []
-    print("\n" + "=" * 88)
-    print("🔬 EXPERIMENTO CIENTÍFICO DE PROPAGAÇÃO DE ERROS (MoveSense Pipeline Completo)")
-    print("=" * 88)
-    print(f"{'Cenário':<25} | {'MOTA':>7} | {'Recall':>7} | {'IDSW':>5} | {'Tracks':>6} | {'% Walking':>9}")
-    print("-" * 88)
+    print("\n" + "=" * 102)
+    print("🔬 EXPERIMENTO DE PROPAGAÇÃO DE ERROS: Sem Suavização (Raw) vs. Com Suavização (DS-08)")
+    print("=" * 102)
+    print(
+        f"{'Cenário':<23} | {'MOTA':>7} | {'Recall':>7} | {'IDSW':>5} | "
+        f"{'Tracks':>6} | {'Walk(Raw)':>9} | {'Walk(DS08)':>10}"
+    )
+    print("-" * 102)
 
     for name, drop, jitter in scenarios:
         noisy_dets = simulate_noisy_detections(gt_df, dropout_rate=drop, jitter_px=jitter)
@@ -97,18 +100,24 @@ def main() -> None:
         pred_df = pd.DataFrame(track_records)
         eval_metrics = evaluate_tracking(gt_df, pred_df, iou_threshold=0.5)
 
-        # Extrai features e classifica comportamentos dos tracks gerados
-        feat_df = extract_trajectory_features(pred_df, fps=25)
-        preds = clf.predict(feat_df)
-        walking_pct = (preds.count("walking") / len(preds) * 100.0) if preds else 0.0
+        # Sem suavização (Raw)
+        feat_raw = extract_trajectory_features(pred_df, fps=25, smooth_window=1, min_frames=1)
+        preds_raw = clf.predict(feat_raw) if not feat_raw.empty else []
+        walk_raw_pct = (preds_raw.count("walking") / len(preds_raw) * 100.0) if preds_raw else 0.0
+
+        # Com suavização Savitzky-Golay + filtro de micro-tracks (DS-08)
+        feat_smooth = extract_trajectory_features(pred_df, fps=25, smooth_window=9, min_frames=5)
+        preds_smooth = clf.predict(feat_smooth) if not feat_smooth.empty else []
+        walk_smooth_pct = (preds_smooth.count("walking") / len(preds_smooth) * 100.0) if preds_smooth else 0.0
 
         print(
-            f"{name:<25} | "
+            f"{name:<23} | "
             f"{eval_metrics['mota']*100:>6.1f}% | "
             f"{eval_metrics['recall']*100:>6.1f}% | "
             f"{eval_metrics['id_switches']:>5d} | "
-            f"{len(feat_df):>6d} | "
-            f"{walking_pct:>8.1f}%"
+            f"{len(feat_raw):>6d} | "
+            f"{walk_raw_pct:>8.1f}% | "
+            f"{walk_smooth_pct:>9.1f}%"
         )
 
         summary_rows.append({
@@ -119,13 +128,14 @@ def main() -> None:
             "precision": eval_metrics["precision"],
             "recall": eval_metrics["recall"],
             "id_switches": eval_metrics["id_switches"],
-            "total_predicted_tracks": len(feat_df),
-            "walking_accuracy_pct": walking_pct,
+            "total_predicted_tracks": len(feat_raw),
+            "walking_accuracy_pct": walk_raw_pct,
+            "walking_accuracy_smoothed_pct": walk_smooth_pct,
         })
 
     results_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(summary_rows).to_csv(results_path, index=False)
-    print("=" * 88)
+    print("=" * 102)
     print(f"✅ Relatório experimental salvo em: {results_path}\n")
 
 

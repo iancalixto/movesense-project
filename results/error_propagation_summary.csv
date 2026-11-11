@@ -1,5 +1,5 @@
-scenario,dropout_rate,jitter_px,mota,precision,recall,id_switches,total_predicted_tracks,walking_accuracy_pct
-1. Ideal (Baseline),0.0,0.0,1.0,1.0,1.0,0,5,100.0
-2. Ruído Leve (Edge),0.05,5.0,0.964,1.0,0.964,0,5,0.0
-3. Oclusão Moderada,0.2,15.0,0.29000000000000004,0.7180722891566265,0.596,36,55,0.0
-4. Detector Degradado,0.4,25.0,-0.254,0.35962145110410093,0.228,38,114,0.0
+scenario,dropout_rate,jitter_px,mota,precision,recall,id_switches,total_predicted_tracks,walking_accuracy_pct,walking_accuracy_smoothed_pct
+1. Ideal (Baseline),0.0,0.0,1.0,1.0,1.0,0,5,100.0,40.0
+2. Ruído Leve (Edge),0.05,5.0,0.964,1.0,0.964,0,5,0.0,80.0
+3. Oclusão Moderada,0.2,15.0,0.29000000000000004,0.7180722891566265,0.596,36,55,1.8181818181818181,60.0
+4. Detector Degradado,0.4,25.0,-0.254,0.35962145110410093,0.228,38,114,7.894736842105263,58.82352941176471

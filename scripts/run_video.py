@@ -2,7 +2,7 @@
 
 Examples:
     python scripts/run_video.py --input data/real/teste.mp4 --max-frames 100
-    python scripts/run_video.py --input data/MOT17-09/img1 --fps 30
+    python scripts/run_video.py --input data/MOT17/train/MOT17-09-FRCNN/img1 --fps 30 --max-frames 120 --conf 0.50
 """
 
 import argparse
@@ -65,6 +65,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional limit on frames to process (useful for fast CPU testing).",
     )
+    parser.add_argument(
+        "--smooth-window",
+        type=int,
+        default=9,
+        help="Savitzky-Golay smoothing window length (>= 3 enables smoothing, default: 9).",
+    )
+    parser.add_argument(
+        "--min-track-frames",
+        type=int,
+        default=5,
+        help="Minimum track duration in frames to keep (filters micro-fragments, default: 5).",
+    )
     return parser.parse_args()
 
 
@@ -80,7 +92,10 @@ def main() -> None:
 
     tracker = SimpleTracker(iou_threshold=0.3, max_misses=5)
 
-    print(f"3. Running end-to-end pipeline on: {args.input}")
+    print(
+        f"3. Running pipeline on {args.input} "
+        f"(smooth_window={args.smooth_window}, min_track_frames={args.min_track_frames})..."
+    )
     result = run_video_pipeline(
         input_path=args.input,
         output_video_path=args.output_video,
@@ -90,20 +105,23 @@ def main() -> None:
         classifier=clf,
         fps=args.fps,
         max_frames=args.max_frames,
+        smooth_window=args.smooth_window,
+        min_track_frames=args.min_track_frames,
     )
 
     preds = result["predictions_df"]
     print("\n" + "=" * 72)
-    print(f"🎬 Frames processados: {result['frames_processed']} | Tracks: {result['total_tracks']}")
+    print(f"🎬 Frames processados: {result['frames_processed']} | Tracks válidos: {result['total_tracks']}")
     print("=" * 72)
     if preds.empty:
-        print("Nenhum pedestre detectado neste trecho.")
+        print("Nenhum pedestre válido detectado neste trecho.")
     else:
         for _, row in preds.iterrows():
             print(
                 f"ID #{int(row['track_id']):<3} | "
                 f"Frames: {int(row['duration_frames']):<4} | "
                 f"Vel. Média: {row['mean_speed']:>6.1f} px/s | "
+                f"Vel. Máx: {row['max_speed']:>6.1f} px/s | "
                 f"Comportamento: [{str(row['predicted_behaviour']).upper()}]"
             )
     print("=" * 72)
