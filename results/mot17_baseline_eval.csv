@@ -1,0 +1,2 @@
+sequence,frames_evaluated,fps,model,conf_threshold,iou_threshold,min_visibility,gt_tracks,pred_tracks,mota,precision,recall,true_positives,false_positives,false_negatives,id_switches,total_gt
+MOT17-09-FRCNN,120,30.0,yolov8n.pt,0.25,0.5,0.0,9,53,0.346727898966705,0.647610121836926,0.7933409873708381,691,376,180,13,871
