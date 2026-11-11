@@ -54,7 +54,7 @@ def main() -> None:
                 unique_track_ids.add(t.track_id)
                 # Formato oficial MOTChallenge para rastreamento:
                 # frame, track_id, bb_left, bb_top, bb_width, bb_height, conf, -1, -1, -1
-                line = f"{f},{t.track_id},{t.x:.1f},{t.y:.1f},{t.w:.1f},{t.h:.1f},{t.conf:.2f},-1,-1,-1"
+                line = f"{f},{t.track_id},{t.x:.1f},{t.y:.1f},{t.w:.1f},{t.h:.1f},{t.conf:.2f},-1,-1"
                 output_lines.append(line)
 
             pbar.update(1)

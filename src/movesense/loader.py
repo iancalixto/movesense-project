@@ -43,6 +43,8 @@ def load_mot_file(file_path: pathlib.Path | str) -> pd.DataFrame:
         path,
         header=None,
         names=MOT_COLUMNS,
+        usecols=range(9),
+        index_col=False,
         dtype={
             "frame": int,
             "id": int,

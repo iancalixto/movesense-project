@@ -1,4 +1,4 @@
-.PHONY: install test step-02 step-04 step-05 step-06 step-07
+.PHONY: install test step-02 step-04 step-05 step-06 step-07 step-08 step-09
 
 install:
 	uv pip install -e ".[dev]"
@@ -23,3 +23,6 @@ step-07:
 
 step-08:
 	python scripts/extract_features.py
+
+step-09:
+	python scripts/train_classifier.py
