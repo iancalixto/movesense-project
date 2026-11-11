@@ -26,3 +26,6 @@ step-08:
 
 step-09:
 	python scripts/train_classifier.py
+
+step-10:
+	python scripts/run_error_propagation.py
