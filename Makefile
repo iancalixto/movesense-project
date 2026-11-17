@@ -37,3 +37,7 @@ step-12:
 
 step-13:
 	python scripts/run_mot_benchmark.py
+
+step-14:
+	python scripts/evaluate_behaviour_rules.py
+	

@@ -1,0 +1,29 @@
+{
+  "scale_normalization": {
+    "min_height_px": 15.0,
+    "description": "Altura h da bounding box e usada como referencia de comprimento corporal (v_norm = v / h) para eliminar o vies de perspectiva da camera."
+  },
+  "posture": {
+    "laydown_aspect_ratio_min": 1.05,
+    "description": "Aspect ratio w/h >= 1.05 classifica a postura como laydown/kneeling (pessoa no chao/deitada)."
+  },
+  "speed_thresholds_bl_per_s": {
+    "standing_max": 0.30,
+    "walking_max": 1.45,
+    "running_min": 1.45
+  },
+  "sudden_stop": {
+    "initial_speed_min_bl_s": 0.80,
+    "final_speed_max_bl_s": 0.25,
+    "time_window_s": 0.60
+  },
+  "direction_change": {
+    "min_angle_degrees": 85.0,
+    "min_speed_bl_s": 0.30,
+    "window_frames": 5
+  },
+  "loitering": {
+    "max_confinement_radius_bl": 1.8,
+    "min_duration_s": 3.0
+  }
+}
