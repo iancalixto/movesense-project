@@ -40,4 +40,6 @@ step-13:
 
 step-14:
 	python scripts/evaluate_behaviour_rules.py
-	
+
+step-15:
+	python scripts/benchmark_async_stream.py
