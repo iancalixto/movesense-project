@@ -43,3 +43,6 @@ step-14:
 
 step-15:
 	python scripts/benchmark_async_stream.py
+
+step-16:
+	python scripts/evaluate_jrdb_benchmark.py

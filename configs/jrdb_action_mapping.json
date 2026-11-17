@@ -1,0 +1,17 @@
+{
+    "dataset": "JackRabbot Dataset and Benchmark (JRDB-Act)",
+    "description": "Mapeia as acoes do benchmark de Stanford para as categorias comportamentais do MoveSense.",
+    "mapping": {
+        "walking": "walking",
+        "standing": "standing",
+        "sitting": "laydown/kneeling",
+        "kneeling": "laydown/kneeling",
+        "lying": "laydown/kneeling",
+        "running": "running",
+        "loitering": "loitering",
+        "pushing": "pushen (Einkaufswagen/Kinderwagen/tragen)",
+        "cycling": "pushen (Einkaufswagen/Kinderwagen/tragen)",
+        "skating": "running"
+    },
+    "default_action": "unknown"
+}
