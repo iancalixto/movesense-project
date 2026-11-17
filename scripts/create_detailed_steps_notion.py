@@ -1,7 +1,7 @@
 """
 Script to create ultra-complete, didactic, encyclopedic step-by-step reference sub-pages inside:
 '01 · Guia Passo a Passo: O que foi Feito, Objetivos e Próximos Passos (com os Porquês)'
-in Notion for each milestone (DE-01 through DS-03).
+in Notion for each milestone (DE-01 through DE-07 / DS-08).
 
 Each page includes:
 1. Detailed step-by-step instructions (commands, TDD Red->Green->Execution flow, Git flow).
@@ -96,6 +96,30 @@ def code(content: str, language: str = "plain text"):
 
 def divider():
     return {"object": "block", "type": "divider", "divider": {}}
+
+
+def notion_table(rows: list[list[str]], has_column_header: bool = True) -> dict:
+    table_width = len(rows[0]) if rows else 1
+    children = [
+        {
+            "object": "block",
+            "type": "table_row",
+            "table_row": {
+                "cells": [[{"type": "text", "text": {"content": str(cell)}}] for cell in row]
+            },
+        }
+        for row in rows
+    ]
+    return {
+        "object": "block",
+        "type": "table",
+        "table": {
+            "table_width": table_width,
+            "has_column_header": has_column_header,
+            "has_row_header": False,
+            "children": children,
+        },
+    }
 
 
 def file_section(
@@ -651,7 +675,335 @@ make step-08                             # Extrai trajectory_features.csv""",
     ]
     create_child_page("DS-03 · Extrator de Features Cinemáticas de Trajetória", "📈", ds03_blocks)
 
-    print("\n🎉 Todas as 9 páginas detalhadas foram atualizadas com sucesso no Notion!")
+    # =========================================================================
+    # 10. DS-04: Behaviour Classifier (Random Forest)
+    # =========================================================================
+    ds04_blocks = [
+        callout(
+            "DS-04 · Classificador Comportamental Random Forest: Como transformamos métricas cinemáticas em classificações (standing, loitering, walking, running) e corrigimos um bug silencioso de colunas no MOT Loader.",
+            "🌲",
+        ),
+        divider(),
+        h1("1. O Problema que Precisávamos Resolver"),
+        p(
+            "No DS-03 geramos a tabela física de cada trajetória (duration_frames, mean_speed, max_speed, std_speed, mean_acceleration, confinement_radius). Agora precisávamos treinar um modelo supervisionado (Random Forest) para prever automaticamente o comportamento de cada pedestre sem regras manuais rígidas."
+        ),
+        h1("2. Passo a Passo Executado (TDD + Bug Real Encontrado)"),
+        numbered("Criar branch 'feat/DS-04-behaviour-classifier' a partir da main."),
+        numbered("FASE RED: Criar 'tests/test_classifier.py' exigindo erro se tentar prever sem treinar, validação de acurácia/macro-F1 no split de teste e previsão correta para perfis simulados."),
+        numbered("FASE GREEN: Implementar 'src/movesense/classifier.py' encapsulando o RandomForestClassifier do scikit-learn com estratificação segura."),
+        numbered("FASE EXECUTION: Criar 'scripts/train_classifier.py' e 'make step-09' (treinando com 60 trajetórias rotuladas balanceadas em 4 classes e prevendo nos 5 pedestres do vídeo sintético)."),
+        numbered("BUG REAL DESCOBERTO: O 'loader.py' lia arquivos MOT de 10 colunas sem 'usecols=range(9), index_col=False', causando deslocamento silencioso de índice no Pandas quando faltava coluna ou sobrava vírgula. Padronizamos também 'scripts/run_tracker.py' para 9 colunas MOT."),
+        numbered("Fazer commit (7954c21) e merge na main."),
+        code(
+"""git checkout -b feat/DS-04-behaviour-classifier
+python -m pytest tests/test_classifier.py  # 3 passed
+make step-08 && make step-09               # Gera behaviour_predictions.csv""",
+            "shell",
+        ),
+        h1("3. Arquivos Criados/Corrigidos e Função Exata"),
+        *file_section(
+            "tests/test_classifier.py",
+            "Valida o ciclo completo do classificador: guarda contra previsão antes do treino, divisão treino/teste estratificada e assertividade em trajetórias sintéticas.",
+            "Contém 3 testes unitários cobrindo comportamento de erro e previsão correta das classes.",
+            language="python",
+        ),
+        *file_section(
+            "src/movesense/classifier.py",
+            "Implementa a camada de Machine Learning supervisionado para comportamentos individuais do pipeline MoveSense.",
+            "Define FEATURE_COLUMNS e a classe 'BehaviourClassifier' com métodos '.train()' (retornando accuracy, macro_f1 e classification_report) e '.predict()'.",
+            language="python",
+        ),
+        *file_section(
+            "scripts/train_classifier.py",
+            "Treina a Random Forest com um corpus balanceado das 4 classes (standing, loitering, walking, running) e prevê nos pedestres rastreados.",
+            "Gera 'data/synthetic/behaviour_predictions.csv' exibindo o relatório por track no terminal.",
+            language="python",
+        ),
+        divider(),
+        h1("4. Resultado Final"),
+        bullet("100.0% de Accuracy e Macro-F1 no split de teste balanceado."),
+        bullet("Todos os 5 pedestres do vídeo sintético (#1 a #5) previstos corretamente como [WALKING]."),
+        bullet("Bug de alinhamento de 9 vs. 10 colunas no MOT Loader resolvido definitivamente."),
+    ]
+    create_child_page("DS-04 · Classificador Random Forest & Correção do Loader", "🌲", ds04_blocks)
+
+    # =========================================================================
+    # 11. DS-05: Evaluation Metrics & Error Propagation
+    # =========================================================================
+    ds05_blocks = [
+        callout(
+            "DS-05 · Avaliação MOT (Algoritmo Húngaro) & Propagação de Erros: A prova científica de como o ruído do detector destrói a classificação comportamental mesmo quando o MOTA parece alto.",
+            "🔬",
+        ),
+        divider(),
+        h1("1. O Objetivo Científico Central do MoveSense"),
+        p(
+            "O projeto MoveSense exige medir a qualidade do tracking (MOTA, Precision, Recall, ID Switches) e analisar como erros de detecção (dropout e jitter de bounding box) se propagam até o classificador final de comportamento."
+        ),
+        h1("2. Passo a Passo Executado (TDD)"),
+        numbered("Criar branch 'feat/DS-05-evaluation-metrics'."),
+        numbered("FASE RED: Criar 'tests/test_evaluation.py' testando rastreamento perfeito (MOTA = 1.0, IDSW = 0), falso negativo/falso positivo e detecção explícita de troca de identidade (ID Switch)."),
+        numbered("FASE GREEN: Implementar 'src/movesense/evaluation.py' usando o Algoritmo Húngaro (scipy.optimize.linear_sum_assignment) para pareamento ótimo frame a frame entre caixas GT e preditas."),
+        numbered("FASE EXECUTION: Criar 'scripts/run_error_propagation.py' e 'make step-10', simulando 4 cenários progressivos de degradação do detector."),
+        numbered("Rodar 'python -m pytest' (21 passed) e 'make step-10' -> commit e merge na main."),
+        h1("3. Tabela Experimental Medida (make step-10 · results/error_propagation_summary.csv)"),
+        notion_table([
+            ["Cenário", "Dropout / Jitter", "MOTA", "Recall", "IDSW", "Tracks", "% Walking (Raw)"],
+            ["1. Ideal (Baseline)", "0% / 0 px", "100.0%", "100.0%", "0", "5", "100.0%"],
+            ["2. Ruído Leve (Edge)", "5% / 5.0 px", "96.4%", "96.4%", "0", "5", "0.0% ⚠️"],
+            ["3. Oclusão Moderada", "20% / 15.0 px", "29.0%", "59.6%", "36", "55", "1.8%"],
+            ["4. Detector Degradado", "40% / 25.0 px", "-25.4%", "22.8%", "38", "114", "7.9%"],
+        ]),
+        callout(
+            "Grande Descoberta Científica no Cenário 2: Mesmo com MOTA de 96.4% e 0 ID Switches, um jitter de ±5 px a 25 FPS infla a velocidade instantânea quadro a quadro (np.diff), enganando a Random Forest e derrubando os acertos de Walking de 100.0% para 0.0%!",
+            "⚠️",
+        ),
+        h1("4. Arquivos Criados e Função Exata"),
+        *file_section(
+            "tests/test_evaluation.py",
+            "Valida o cálculo exato de MOTA, Precision, Recall e contagem de ID Switches em cenários determinísticos.",
+            "Garante que o pareamento bipartido e a memória de identidade anterior funcionem sem desvios matemáticos.",
+            language="python",
+        ),
+        *file_section(
+            "src/movesense/evaluation.py",
+            "Implementa métricas oficiais de Multi-Object Tracking no projeto.",
+            "Usa matriz de IoU e Algoritmo Húngaro (linear_sum_assignment) frame a frame para calcular TP, FP, FN, IDSW, Precision, Recall e MOTA.",
+            language="python",
+        ),
+        *file_section(
+            "scripts/run_error_propagation.py",
+            "Experimento ponta a ponta que injeta ruído controlado nas detecções para medir impacto no tracking e no comportamento.",
+            "Executa os 4 cenários e grava o relatório reproduzível em 'results/error_propagation_summary.csv'.",
+            language="python",
+        ),
+    ]
+    create_child_page("DS-05 · Métricas MOT (Húngaro) & Propagação de Erros", "🔬", ds05_blocks)
+
+    # =========================================================================
+    # 12. DS-06: End-to-End Video Pipeline
+    # =========================================================================
+    ds06_blocks = [
+        callout(
+            "DS-06 · Aplicação Ponta a Ponta em Vídeo Real: Como conectamos YOLOv8 + SimpleTracker + Features + Random Forest em streaming de 2 passagens para rodar em .mp4 e pastas img1/ do MOT17.",
+            "🎥",
+        ),
+        divider(),
+        h1("1. O Problema de Engenharia Resolvido"),
+        p(
+            "Até o DS-05 tínhamos scripts isolados por etapa. Para testar em vídeos reais (.mp4 ou sequências de imagens MOT17) sem estourar a memória RAM do Mac com milhares de frames HD descompactados, criamos uma arquitetura de streaming em 2 passagens."
+        ),
+        h1("2. Arquitetura em 2 Passagens"),
+        numbered("Passagem 1 (Streaming Leve): lê 1 frame por vez -> Detector YOLO -> SimpleTracker -> guarda apenas coordenadas numéricas dos tracks (quase zero RAM)."),
+        numbered("Classificação: extrai features cinemáticas por track_id e prevê o comportamento global de cada trajetória."),
+        numbered("Passagem 2 (Renderização): lê o vídeo novamente frame a frame, desenha caixas coloridas por comportamento + ID + rótulo e grava em 'outputs_local/annotated_video.avi'."),
+        h1("3. Arquivos Criados e Primeiro Teste no MOT17 Real"),
+        *file_section(
+            "tests/test_pipeline.py",
+            "Testa o contrato ponta a ponta em < 4s criando um mini-vídeo sintético com OpenCV e usando um _FakeDetector determinístico.",
+            "Verifica geração de vídeo anotado, CSV de previsões e resiliência quando há 0 detecções.",
+            language="python",
+        ),
+        *file_section(
+            "src/movesense/pipeline.py",
+            "Motor reutilizável que aceita tanto arquivos de vídeo (.mp4/.avi) quanto pastas de frames MOT (img1/).",
+            "Expõe 'run_video_pipeline()' unificando detecção, tracking, extração de features, classificação e renderização OpenCV.",
+            language="python",
+        ),
+        *file_section(
+            "scripts/run_video.py",
+            "Interface CLI da aplicação MoveSense para rodar qualquer vídeo real com flags configuráveis (--conf, --fps, --max-frames).",
+            "Salva automaticamente o vídeo anotado e a tabela CSV em 'outputs_local/'.",
+            language="python",
+        ),
+        divider(),
+        h1("4. Diagnóstico do Primeiro Teste Real (MOT17-09-FRCNN, 120 frames, conf=0.25)"),
+        bullet("Suíte atingiu 23 passed em 4.28s."),
+        bullet("No vídeo real MOT17-09-FRCNN (120 frames, conf=0.25), gerou 53 tracks — sendo 26 micro-fragmentos de apenas 1–2 frames (49% do total) e 23 falsos [RUNNING] causados pelo jitter real do YOLO (confirmando ao vivo a previsão do DS-05!)."),
+    ]
+    create_child_page("DS-06 · Pipeline Ponta a Ponta em Vídeo Real (.mp4 / MOT17)", "🎥", ds06_blocks)
+
+    # =========================================================================
+    # 13. DS-07: MOT17 GT Audit & Real Evaluation
+    # =========================================================================
+    ds07_blocks = [
+        callout(
+            "DS-07 · Auditoria do Ground Truth Real do MOT17 & Ablação de Confiança: Como descobrimos 48,8% de linhas ignoradas no gt.txt e saltamos o MOTA real de 34.7% para 57.2%.",
+            "📊",
+        ),
+        divider(),
+        h1("1. Auditoria Crítica no Arquivo Real MOT17-09-FRCNN/gt/gt.txt"),
+        p(
+            "Ao inspecionar o arquivo real 'data/MOT17/train/MOT17-09-FRCNN/gt/gt.txt' (10.411 linhas), descobrimos exatamente o risco que a governança do time havia apontado: quase metade do arquivo NÃO representa pedestres válidos!"
+        ),
+        bullet("Total de linhas no gt.txt: 10.411 linhas (9 colunas)."),
+        bullet("Pedestres ativos válidos (flag == 1 e class_id == 1): 5.325 linhas."),
+        bullet("Regiões ignoradas / não-pedestres (flag == 0, classes 7, 8, 9 e 12 — oclusores, pessoas estáticas e reflexos/distratores): 5.086 linhas (48,8%!)."),
+        h1("2. Arquivos Criados/Atualizados"),
+        *file_section(
+            "tests/test_loader.py",
+            "Define o contrato da nova função 'load_mot_gt()' filtrando flag == 0 e classes diferentes de 1.",
+            "Valida também o filtro opcional por visibilidade mínima (min_visibility).",
+            language="python",
+        ),
+        *file_section(
+            "src/movesense/loader.py",
+            "Atualizado com 'load_mot_gt()' mantendo 'load_mot_file()' retrocompatível.",
+            "Filtra anotações de Ground Truth do MOTChallenge para avaliar apenas pedestres reais ativos.",
+            language="python",
+        ),
+        *file_section(
+            "scripts/evaluate_mot17.py",
+            "Avalia YOLOv8 + SimpleTracker contra o Ground Truth real filtrado (lendo FPS de seqinfo.ini).",
+            "Exporta métricas completas em 'results/mot17_baseline_eval.csv' e 'results/mot17_conf050_eval.csv'.",
+            language="python",
+        ),
+        divider(),
+        h1("3. Resultados Reais Medidos em MOT17-09-FRCNN (120 frames, 30 FPS)"),
+        notion_table([
+            ["Configuração", "MOTA", "Precision", "Recall", "TP / GT", "FP", "FN", "IDSW", "Tracks Pred (vs 9 GT)"],
+            ["conf = 0.25 (Baseline)", "34.7%", "64.8%", "79.3%", "691 / 871", "376", "180", "13", "53"],
+            ["conf = 0.50 (Calibrado)", "57.2% (+22.5 p.p.)", "82.8%", "72.4%", "631 / 871", "131 (-65%)", "240", "2 (-85%)", "17"],
+        ]),
+        callout(
+            "Conclusão de Ciência de Dados: Filtrar detecções incertas (0.25–0.49) reduziu False Positives em 65% (376 -> 131), cortou ID Switches de 13 para 2 e elevou o MOTA em +22.5 pontos percentuais.",
+            "🎯",
+        ),
+    ]
+    create_child_page("DS-07 · Auditoria GT Real do MOT17 & Ablação de Confiança", "📊", ds07_blocks)
+
+    # =========================================================================
+    # 14. DS-08: Temporal Trajectory Smoothing & Filtering
+    # =========================================================================
+    ds08_blocks = [
+        callout(
+            "DS-08 · Mitigação da Propagação de Erros: Suavização Temporal Savitzky-Golay (polyorder=1), delta real de frames (dt) e filtro de micro-tracks.",
+            "〰️",
+        ),
+        divider(),
+        h1("1. Como Resolvemos o Falso RUNNING no Sintético e no MOT17 Real"),
+        bullet("smooth_trajectory(): aplica filtro linear Savitzky-Golay (polyorder=1, janela 9) nas coordenadas (cx, cy) — remove o jitter de alta frequência sem distorcer linhas retas nas bordas."),
+        bullet("Delta real de frames (dt = np.diff(frames)): evita que falhas de 1–2 frames no detector multipliquem artificialmente a velocidade."),
+        bullet("Filtro de micro-tracks (min_frames=5): descarta fragmentos fantasmas curtos antes de classificar e renderizar o vídeo."),
+        h1("2. Experimento Antes vs. Depois (make step-10 · results/error_propagation_summary.csv)"),
+        notion_table([
+            ["Cenário", "MOTA", "Recall", "IDSW", "Walk (Raw)", "Walk (DS-08 Suavizado)"],
+            ["1. Ideal (Baseline)", "100.0%", "100.0%", "0", "100.0%", "40.0%*"],
+            ["2. Ruído Leve (5% / 5px)", "96.4%", "96.4%", "0", "0.0%", "80.0% 🚀"],
+            ["3. Oclusão Moderada", "29.0%", "59.6%", "36", "1.8%", "60.0% 🚀"],
+            ["4. Detector Degradado", "-25.4%", "22.8%", "38", "7.9%", "58.8% 🚀"],
+        ]),
+        p(
+            "*Nota científica sobre o Cenário 1 (40.0%): o gerador sintético salva posições como inteiros, criando serrilhado artificial (max_speed ~112–135 px/s no Raw). Quando o Savitzky-Golay removeu o serrilhado, revelou que os tracks #1, #3 e #4 têm velocidade real entre 25.4 e 45.1 px/s — caindo na faixa de loitering (15–45 px/s) do corpus de treino. Lição: após suavizar features, o treino também deve ser recalibrado na mesma escala (ou normalizado pela altura h)."
+        ),
+        h1("3. Ganho Real no Vídeo MOT17-09-FRCNN (120 frames, conf=0.50, smooth=9, min_frames=5)"),
+        bullet("Tracks válidos caíram de 53 para apenas 11 (contra 9 IDs reais no GT)!"),
+        bullet("5 pedestres reais antes classificados como RUNNING foram recuperados para [WALKING]: IDs #2 (79.0 px/s), #6 (118.4 px/s), #8 (92.1 px/s), #14 (66.2 px/s) e #15 (67.0 px/s)."),
+        bullet("Apenas o ID #1 (passando colado à câmera a 320.8 px/s, por efeito de perspectiva) permaneceu como [RUNNING] — motivando normalização pela altura da bounding box no próximo ciclo."),
+        h1("4. Arquivos Atualizados"),
+        *file_section(
+            "tests/test_features.py",
+            "Contém agora 5 testes cobrindo linearidade da suavização, amortecimento de jitter e filtro de duração mínima.",
+            "Valida matematicamente a redução > 50% do pico artificial de max_speed sob ruído.",
+            language="python",
+        ),
+        *file_section(
+            "src/movesense/features.py",
+            "Adiciona smooth_trajectory(), delta temporal real dt e parâmetros opcionais smooth_window e min_frames.",
+            "Preserva retrocompatibilidade (defaults = 1) e protege contra DataFrames vazios.",
+            language="python",
+        ),
+        *file_section(
+            "src/movesense/pipeline.py",
+            "Integra smooth_window e min_track_frames e remove micro-tracks também da renderização do vídeo.",
+            "Gera vídeos anotados limpos sem caixinhas piscando por 1 frame.",
+            language="python",
+        ),
+        *file_section(
+            "scripts/run_video.py",
+            "Expõe --smooth-window (padrão 9) e --min-track-frames (padrão 5) na linha de comando.",
+            "Permite reproduzir imediatamente a execução limpa em qualquer vídeo real ou pasta MOT.",
+            language="python",
+        ),
+        *file_section(
+            "scripts/run_error_propagation.py",
+            "Compara lado a lado Walk(Raw) vs. Walk(DS08) nos 4 cenários de degradação.",
+            "Consolida ambos os resultados em 'results/error_propagation_summary.csv'.",
+            language="python",
+        ),
+    ]
+    create_child_page("DS-08 · Suavização Savitzky-Golay & Filtro de Micro-Tracks", "〰️", ds08_blocks)
+
+    # =========================================================================
+    # 15. DE-07: Unified MOT17 + MOT20 Benchmark & Split Governance
+    # =========================================================================
+    de07_blocks = [
+        callout(
+            "DE-07 · Benchmark Unificado MOT17 + MOT20: Governança contra leakage de variantes, splits congelados e avaliação real em todas as 7 cenas únicas do MOT17.",
+            "🏛️",
+        ),
+        divider(),
+        h1("1. Decisão Arquitetural: Por que Combinar MOT17 + MOT20 Sem Misturar Médias"),
+        bullet("MOT17 (Baseline Geral): 7 sequências únicas de treino em densidades variadas, câmeras fixas e móveis."),
+        bullet("MOT20 (Stress Test de Multidão): mesmo formato de 9 colunas, porém com densidade extrema (~150+ pedestres/frame). Reportado sempre em linha separada para não esmagar as métricas do MOT17."),
+        bullet("Prevenção de Leakage: variantes DPM/FRCNN/SDP de um mesmo vídeo (ex.: MOT17-09) nunca podem ser separadas entre dev e eval."),
+        h1("2. Resultados Reais por Sequência nas 7 Cenas Únicas do MOT17 (make step-13 · 60 frames/cena, conf=0.50)"),
+        notion_table([
+            ["Dataset", "Sequência", "Split", "Câmera", "MOTA", "Precision", "Recall", "IDSW"],
+            ["MOT17", "MOT17-02-FRCNN", "dev", "stationary", "17.8%", "91.7%", "19.7%", "2"],
+            ["MOT17", "MOT17-04-FRCNN", "eval", "stationary", "23.0%", "88.3%", "26.9%", "10"],
+            ["MOT17", "MOT17-05-FRCNN", "dev", "moving", "32.0%", "86.1%", "40.9%", "11"],
+            ["MOT17", "MOT17-09-FRCNN", "dev", "stationary", "46.1%", "79.3%", "63.0%", "2"],
+            ["MOT17", "MOT17-10-FRCNN", "dev", "moving", "23.7%", "92.7%", "27.4%", "18"],
+            ["MOT17", "MOT17-11-FRCNN", "eval", "moving", "34.8%", "97.3%", "36.4%", "5"],
+            ["MOT17", "MOT17-13-FRCNN", "eval", "moving", "22.0%", "96.9%", "23.2%", "7"],
+        ]),
+        h1("3. Resumo Agregado por Regime (results/mot_benchmark_summary.csv)"),
+        notion_table([
+            ["Dataset", "Sequências", "Frames", "GT Boxes", "MOTA", "Precision", "Recall", "IDSW"],
+            ["MOT17 (Baseline)", "7", "420", "8.287", "25.1%", "90.1%", "28.9%", "55"],
+            ["MOT20 (Stress Test)", "Pendente download em data/MOT20/train", "-", "-", "-", "-", "-", "-"],
+        ]),
+        callout(
+            "Diagnóstico Científico das 7 Cenas: A precisão global é altíssima (90.1%, chegando a 97.3% na MOT17-11), mas o Recall cai para 28.9% porque o yolov8n.pt (Nano, conf=0.50) perde pedestres pequenos/distantes em praças amplas (MOT17-02: 19.7% Recall). Já em câmera móvel na mão (MOT17-10), o IDSW dispara para 18 — justificando Kalman/ByteTrack.",
+            "🔎",
+        ),
+        h1("4. Arquivos Criados e Função Exata"),
+        *file_section(
+            "configs/splits/mot_sequences.json",
+            "Congela oficialmente os splits dev vs. eval por sequência única e documenta quais câmeras são estacionárias ou móveis.",
+            "Elimina vazamento entre variantes DPM/FRCNN/SDP e separa o regime MOT20.",
+            language="json",
+        ),
+        *file_section(
+            "tests/test_benchmark.py",
+            "Suite TDD (4 testes) validando canonical_sequence_id(), bloqueio de leakage, deduplicação de variantes e agregação separada MOT17 vs. MOT20.",
+            "Leva a suíte total do projeto para 30 testes automatizados verdes.",
+            language="python",
+        ),
+        *file_section(
+            "src/movesense/benchmark.py",
+            "Módulo de governança e avaliação multi-sequência unificada para MOT17 e MOT20.",
+            "Implementa validação de leakage, descoberta automática sem duplicatas e micro-média por regime.",
+            language="python",
+        ),
+        *file_section(
+            "scripts/run_mot_benchmark.py",
+            "Executa o benchmark oficial em todas as sequências disponíveis em data/MOT17/train e data/MOT20/train com um tracker limpo por cena.",
+            "Gera 'results/mot_benchmark_per_sequence.csv' e 'results/mot_benchmark_summary.csv' via 'make step-13'.",
+            language="python",
+        ),
+        *file_section(
+            "Makefile",
+            "Versão consolidada do painel de comandos do MoveSense até o step-13.",
+            "Centraliza install, test (30 testes) e todos os fluxos de step-02 a step-13.",
+            language="makefile",
+        ),
+    ]
+    create_child_page("DE-07 · Benchmark Unificado MOT17 + MOT20 (Governança & Real)", "🏛️", de07_blocks)
+
+    print("\n🎉 Todas as 15 páginas detalhadas (DE-01..DE-07 e DS-01..DS-08) foram atualizadas com sucesso no Notion!")
 
 
 if __name__ == "__main__":
