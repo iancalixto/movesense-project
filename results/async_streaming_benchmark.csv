@@ -1,0 +1,3 @@
+Modo,Frames Totais,Tempo Total (s),Taxa de Stream (FPS),Inferencia Paralela,Atraso (Lag)
+Sincrono (Bloqueante),60,2.78,21.6,Nao (Trava o video),Acumulativo
+Assincrono (DE-08),60,0.86,70.0,Sim (Worker Thread),Zero (Drop on Overrun)

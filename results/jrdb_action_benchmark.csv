@@ -1,0 +1,6 @@
+Track ID,Frames,Velocidade (corpos/s),Aspect Ratio,Acao Real (JRDB-Act),Predicao MoveSense,Status
+1,4,0.556,0.346,walking,walking,CORRETO
+2,4,0.0,1.5,laydown/kneeling,laydown/kneeling,CORRETO
+3,4,0.0,0.296,standing,standing,CORRETO
+4,4,1.178,0.4,running,walking,DIVERGENTE
+5,4,0.103,0.328,loitering,standing,DIVERGENTE

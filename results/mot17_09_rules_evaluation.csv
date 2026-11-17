@@ -1,0 +1,12 @@
+Track ID,Frames,Altura Media (px),Aspect Ratio (w/h),Velocidade (px/s),Velocidade (corpos/s),Classificacao Antiga (pixels),Novo Comportamento (DS-09),Anomalias / Eventos
+1,116,561.7,0.43,336.2,0.608,running (FALSO POSITIVO),loitering,nenhuma
+2,31,238.9,0.387,128.8,0.54,walking,walking,nenhuma
+3,91,196.0,0.337,43.8,0.201,walking,loitering,nenhuma
+4,15,246.1,0.342,101.3,0.427,walking,walking,nenhuma
+6,120,459.8,0.392,173.9,0.375,running (FALSO POSITIVO),loitering,direction_change_178deg
+8,119,521.6,0.315,110.6,0.23,walking,loitering,direction_change_110deg
+9,5,174.4,0.324,70.4,0.365,walking,walking,nenhuma
+10,65,127.5,0.361,26.1,0.176,walking,standing,direction_change_173deg
+13,68,233.2,0.337,112.2,0.42,walking,walking,"sudden_stop@frame_63, direction_change_175deg"
+14,70,278.0,0.372,86.6,0.316,walking,walking,direction_change_125deg
+15,54,251.8,0.362,91.6,0.376,walking,walking,nenhuma
