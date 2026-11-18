@@ -1,0 +1,31 @@
+cat << 'EOF' > .dockerignore
+# Version control and CI
+.git
+.gitignore
+.gitlab-ci.yml
+.github
+
+# Python cache and local virtualenvs
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Tests and Coverage reports
+.pytest_cache/
+.coverage
+report.xml
+.ruff_cache/
+
+# Heavy local data and video files
+data/
+results/
+scratch/
+*.zip
+*.tar.gz
+*.mp4
+*.avi
+.DS_Store
+EOF

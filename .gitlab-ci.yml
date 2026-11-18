@@ -1,0 +1,77 @@
+# ==============================================================================
+# Enterprise CI/CD Pipeline · MoveSense (Topic 06: Behaviour Tracking)
+# Standard: ISO/IEC 25010 & Clean Architecture
+# ==============================================================================
+
+stages:
+  - lint
+  - test
+  - security
+  - package
+
+variables:
+  PYTHONUNBUFFERED: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+# ------------------------------------------------------------------------------
+# 1. Code Quality & Formatting
+# ------------------------------------------------------------------------------
+lint:
+  stage: lint
+  image: python:3.11-slim
+  script:
+    - pip install --no-cache-dir ruff
+    - echo "Running Ruff code quality inspection..."
+    - ruff check src/ tests/ || true
+  allow_failure: true
+
+# ------------------------------------------------------------------------------
+# 2. Automated Testing & Code Coverage
+# ------------------------------------------------------------------------------
+test:
+  stage: test
+  image: python:3.11-slim
+  script:
+    - echo "Installing core runtime and test dependencies..."
+    - pip install --no-cache-dir numpy pandas scipy scikit-learn pytest pytest-cov
+    - pip install --no-cache-dir -e . || true
+    - export PYTHONPATH="src:."
+    - echo "Executing automated test suite with JUnit and Coverage reports..."
+    - pytest tests/ -v --cov=movesense --cov-report=term-missing --junitxml=report.xml
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+
+# ------------------------------------------------------------------------------
+# 3. Security Scanning (SAST & Vulnerability Audit)
+# ------------------------------------------------------------------------------
+security:
+  stage: security
+  image: python:3.11-slim
+  script:
+    - echo "Running SAST (Bandit) and Dependency Security Audit (pip-audit)..."
+    - pip install --no-cache-dir bandit pip-audit
+    - bandit -r src/ -ll -ii || true
+    - pip-audit || true
+  allow_failure: true
+
+# ------------------------------------------------------------------------------
+# 4. Container Packaging (Multi-Stage Docker Build)
+# ------------------------------------------------------------------------------
+package:docker:
+  stage: package
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  script:
+    - echo "Building production MoveSense container..."
+    - docker build -t movesense:$CI_COMMIT_SHORT_SHA .
+    - echo "Docker container built successfully for commit $CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "feature/behaviour-rules-and-async-streaming"
