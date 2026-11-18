@@ -23,8 +23,15 @@ jobs:
             - name: Set up Python
               run: uv python install 3.11
 
+            - name: Create virtualenv
+              run: uv venv --python 3.11
+
             - name: Install dependencies
-              run: make install
+              run: |
+                  source .venv/bin/activate
+                  make install
 
             - name: Run test suite
-              run: make test
+              run: |
+                  source .venv/bin/activate
+                  make test

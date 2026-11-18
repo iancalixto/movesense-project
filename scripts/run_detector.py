@@ -20,7 +20,7 @@ def main() -> None:
             f"Video not found at {video_path}. Run 'make step-04' first to render it!"
         )
 
-    print("Loading YOLO detector (yolov8n.pt)...")
+    print(f"Loading YOLO detector (yolov8n.pt)...")
     detector = PedestrianDetector(model_name="yolov8n.pt", conf_threshold=0.25)
 
     cap = cv2.VideoCapture(str(video_path))
@@ -39,7 +39,7 @@ def main() -> None:
 
             detections = detector.detect(frame)
             for det in detections:
-                # Formato MOT detection: frame, -1 (sem ID), x, y, w, h, conf, -1, -1
+                # MOT detection format: frame, -1 (no ID yet), x, y, w, h, conf, -1, -1
                 line = f"{frame_idx},-1,{det.x:.1f},{det.y:.1f},{det.w:.1f},{det.h:.1f},{det.conf:.2f},-1,-1"
                 lines.append(line)
 

@@ -1,26 +1,24 @@
-"""Pedestrian detection module using YOLOv8."""
+"""Pedestrian detector using Ultralytics YOLO models."""
 
 from dataclasses import dataclass
 import numpy as np
 from ultralytics import YOLO
 
 
-@dataclass
+@dataclass(frozen=True)
 class Detection:
-    """A single pedestrian detection in a frame.
+    """Standardized detection bounding box.
 
     Attributes
     ----------
-    x : float
-        Top-left X coordinate of the bounding box.
-    y : float
-        Top-left Y coordinate of the bounding box.
-    w : float
-        Width of the bounding box.
-    h : float
-        Height of the bounding box.
+    x, y : float
+        Top-left coordinates.
+    w, h : float
+        Width and height of the box.
     conf : float
-        Confidence score of the detection (between 0.0 and 1.0).
+        Confidence score between 0.0 and 1.0.
+    class_id : int
+        Class index (0 for person in COCO dataset).
     """
 
     x: float
@@ -28,59 +26,72 @@ class Detection:
     w: float
     h: float
     conf: float
+    class_id: int = 0
 
 
 class PedestrianDetector:
-    """YOLOv8-based pedestrian detector for single image frames."""
+    """Wrapper around YOLO for pedestrian detection."""
 
     def __init__(self, model_name: str = "yolov8n.pt", conf_threshold: float = 0.25) -> None:
-        """Initialize the pedestrian detector.
+        """Initialize the YOLO detector.
 
         Parameters
         ----------
         model_name : str
-            YOLO model weights to load (e.g., 'yolov8n.pt').
+            YOLO model weights name or path (default: 'yolov8n.pt').
         conf_threshold : float
             Minimum confidence threshold to keep a detection.
         """
         self.model_name = model_name
         self.conf_threshold = conf_threshold
-        self.person_class_id = 0  # COCO class index for 'person'
         self.model = YOLO(model_name)
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
-        """Detect pedestrians in a single video frame.
+        """Detect pedestrians in a single image/frame.
 
         Parameters
         ----------
         frame : np.ndarray
-            Input image in BGR format (standard OpenCV format).
+            OpenCV image (BGR format).
 
         Returns
         -------
         list[Detection]
-            List of detected pedestrians with bounding box and confidence.
+            List of detected pedestrian bounding boxes.
         """
-        results = self.model(frame, verbose=False, conf=self.conf_threshold)
+        # Run inference filtering exclusively for class 0 ('person' in COCO)
+        results = self.model.predict(
+            source=frame,
+            conf=self.conf_threshold,
+            classes=[0],
+            verbose=False,
+        )
+
         detections: list[Detection] = []
+        if not results:
+            return detections
 
-        for result in results:
-            boxes = result.boxes
-            if boxes is None:
-                continue
+        boxes = results[0].boxes
+        if boxes is None or len(boxes) == 0:
+            return detections
 
-            for box in boxes:
-                cls_id = int(box.cls[0].item())
-                # Filtra apenas a classe 0 (pedestres / persons)
-                if cls_id != self.person_class_id:
-                    continue
+        # Extract xyxy and confidences
+        xyxy = boxes.xyxy.cpu().numpy()
+        confs = boxes.conf.cpu().numpy()
+        cls_ids = boxes.cls.cpu().numpy().astype(int)
 
-                conf = float(box.conf[0].item())
-                # Coordenadas em formato xyxy (x1, y1, x2, y2)
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-                w = x2 - x1
-                h = y2 - y1
-
-                detections.append(Detection(x=x1, y=y1, w=w, h=h, conf=conf))
+        for i in range(len(xyxy)):
+            x1, y1, x2, y2 = xyxy[i]
+            w = float(x2 - x1)
+            h = float(y2 - y1)
+            det = Detection(
+                x=float(x1),
+                y=float(y1),
+                w=w,
+                h=h,
+                conf=float(confs[i]),
+                class_id=int(cls_ids[i]),
+            )
+            detections.append(det)
 
         return detections
