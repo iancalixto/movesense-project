@@ -18,10 +18,8 @@ if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import streamlit as st
 
 # MoveSense core modules
