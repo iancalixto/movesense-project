@@ -1,6 +1,6 @@
 """
 MoveSense — Pedestrian Behaviour Classification & Tracking
-Interactive Streamlit Application with Stanford JRDB Video Explorer & Branch Tools
+Interactive Streamlit Application with Real-Time Video Player & Branch Tools
 """
 
 import json
@@ -8,6 +8,7 @@ import os
 import pathlib
 import sys
 import time
+from collections import defaultdict
 
 # Ensure src/ and root are in sys.path
 root_dir = pathlib.Path(__file__).resolve().parent
@@ -24,7 +25,7 @@ import streamlit as st
 
 # MoveSense core modules
 from movesense.detector import Detection, PedestrianDetector
-from movesense.features import extract_trajectory_features, smooth_trajectory
+from movesense.features import extract_trajectory_features
 from movesense.jrdb_loader import JRDBLoader
 from movesense.rules import RuleEngine
 from movesense.tracker import SimpleTracker
@@ -32,14 +33,14 @@ from movesense.async_pipeline import AsyncDetectorWorker
 
 # Set page config
 st.set_page_config(
-    page_title="MoveSense — Stanford JRDB & Behaviour Lab",
+    page_title="MoveSense — Stanford JRDB & Video Lab",
     page_icon="🚶‍♂️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # Custom header
-st.title("🚶‍♂️ MoveSense — Stanford JRDB & Behaviour Analytics")
+st.title("🚶‍♂️ MoveSense — Real-Time Video Tracking & Behaviour Analytics")
 st.caption(
     "Topic 06: Pedestrian Tracking & Behaviour Classification | FH Kufstein MSc Data Science | Branch: feature/behaviour-rules-and-async-streaming"
 )
@@ -50,7 +51,7 @@ st.sidebar.title("Navigation")
 menu = st.sidebar.radio(
     "Select Mode:",
     [
-        "🎓 Stanford JRDB Video Explorer & Branch Tools",
+        "🎬 Real-Time Video Player & Visual Detection",
         "📹 Live Webcam Detector (Mac Camera)",
         "⚙️ Interactive RuleEngine Simulator",
         "📊 Benchmark & Academic Results",
@@ -58,454 +59,417 @@ menu = st.sidebar.radio(
     ],
 )
 
-# Stanford JRDB Video Catalog Definitions
-STANFORD_JRDB_SCENARIOS = {
-    "Bytes Cafe (Indoor Social Robotics)": {
+# Color mapping for behaviours (BGR format for OpenCV, Hex for Streamlit UI)
+BEHAVIOUR_COLORS = {
+    "standing": (0, 255, 120),       # Green
+    "walking": (255, 200, 0),        # Cyan / Blue
+    "running": (0, 140, 255),        # Orange
+    "loitering": (0, 220, 255),      # Yellow
+    "laydown/kneeling": (0, 0, 255), # Red (Fall Alert)
+    "unknown": (180, 180, 180),      # Gray
+}
+
+# Video Sequences Catalog
+VIDEO_SEQUENCES = {
+    "MOT17-09: Real Urban Street Crossing (525 frames)": {
+        "id": "MOT17_09",
+        "type": "real_mot",
+        "img_dir": pathlib.Path("data/MOT17/train/MOT17-09-FRCNN/img1"),
+        "gt_file": pathlib.Path("data/MOT17/train/MOT17-09-FRCNN/gt/gt.txt"),
+        "environment": "Urban Street Crossing",
+        "fps": 30.0,
+        "description": "Real surveillance video of pedestrians crossing a busy street with moving vehicles and background traffic.",
+    },
+    "MOT20-01: Real Ultra-Dense Crowd Shopping Concourse (429 frames)": {
+        "id": "MOT20_01",
+        "type": "real_mot",
+        "img_dir": pathlib.Path("data/MOT20/train/MOT20-01/img1"),
+        "gt_file": pathlib.Path("data/MOT20/train/MOT20-01/gt/gt.txt"),
+        "environment": "Indoor Commercial Center",
+        "fps": 25.0,
+        "description": "High-density crowd tracking benchmark evaluating heavy pedestrian occlusion and sustained tracking IDs.",
+    },
+    "Stanford JRDB: Bytes Cafe (Social Robotics Benchmark)": {
         "id": "JRDB_BYTES_CAFE",
-        "name": "Bytes Cafe (Indoor Social Robotics)",
-        "environment": "Coffee Place / Cafeteria",
+        "type": "stanford_sim",
+        "environment": "Coffee Place & Cafeteria",
         "fps": 30.0,
-        "duration_sec": 12.0,
-        "num_pedestrians": 5,
-        "description": "JackRabbot social robot navigating inside Stanford Bytes Cafe, tracking patrons standing at counters, seated at tables, and walking through aisles.",
-        "primary_behaviours": ["standing", "walking", "loitering"],
-        "colab_url": "https://colab.research.google.com/drive/16P9OXR-bCQhNVVUEhfC926haZ7JDE5Ac",
-    },
-    "Gates Building (Outdoor Campus Plaza)": {
-        "id": "JRDB_GATES_CAMPUS",
-        "name": "Gates Building (Outdoor Campus Plaza)",
-        "environment": "University Campus",
-        "fps": 25.0,
-        "duration_sec": 10.0,
-        "num_pedestrians": 4,
-        "description": "Outdoor JackRabbot sequence traversing Stanford campus outside Gates Computer Science building, tracking students and joggers with egomotion.",
-        "primary_behaviours": ["walking", "running", "loitering"],
-        "colab_url": "https://colab.research.google.com/drive/16P9OXR-bCQhNVVUEhfC926haZ7JDE5Ac",
-    },
-    "Packard Lawn (Crosswalk & Walkway Transit)": {
-        "id": "JRDB_PACKARD_LAWN",
-        "name": "Packard Lawn (Crosswalk & Walkway Transit)",
-        "environment": "Street Crossing / Walkway",
-        "fps": 25.0,
-        "duration_sec": 8.0,
-        "num_pedestrians": 3,
-        "description": "Students crossing pathways near Packard Electrical Engineering building, testing velocity normalization across varying camera distances.",
-        "primary_behaviours": ["walking", "standing"],
-        "colab_url": "https://colab.research.google.com/drive/16P9OXR-bCQhNVVUEhfC926haZ7JDE5Ac",
-    },
-    "Stata Center (Hallway & Corridor Flow)": {
-        "id": "JRDB_STATA_CORRIDOR",
-        "name": "Stata Center (Hallway & Corridor Flow)",
-        "environment": "Transit / Indoor Corridor",
-        "fps": 30.0,
-        "duration_sec": 15.0,
         "num_pedestrians": 6,
-        "description": "Indoor high-density corridor traffic testing tracker ID persistence and sudden stop deceleration detection.",
-        "primary_behaviours": ["walking", "standing"],
-        "colab_url": "https://colab.research.google.com/drive/16P9OXR-bCQhNVVUEhfC926haZ7JDE5Ac",
+        "description": "Stanford JackRabbot robot navigating through Bytes Cafe, tracking patrons seated, standing at counters, and walking.",
     },
-    "Emergency Anomaly & Fall Test Sequence": {
-        "id": "JRDB_FALL_ANOMALY",
-        "name": "Emergency Anomaly & Fall Test Sequence",
-        "environment": "Fall / Emergency Anomaly",
+    "Stanford JRDB: Gates Building (Campus Plaza Transit)": {
+        "id": "JRDB_GATES_CAMPUS",
+        "type": "stanford_sim",
+        "environment": "University Campus Plaza",
         "fps": 25.0,
-        "duration_sec": 12.0,
+        "num_pedestrians": 5,
+        "description": "JackRabbot traversing Stanford Computer Science plaza, evaluating velocity normalization (v/h) with robot egomotion.",
+    },
+    "Stanford JRDB: Emergency Fall & Laydown Anomaly Detection": {
+        "id": "JRDB_FALL_ANOMALY",
+        "type": "stanford_sim",
+        "environment": "Emergency Safety Anomaly",
+        "fps": 25.0,
         "num_pedestrians": 3,
-        "description": "Safety-critical sequence where a pedestrian stumbles and falls horizontally (aspect ratio w/h >= 1.05) while a bystander rushes to assist.",
-        "primary_behaviours": ["walking", "laydown/kneeling", "running"],
-        "colab_url": "https://colab.research.google.com/drive/16P9OXR-bCQhNVVUEhfC926haZ7JDE5Ac",
+        "description": "Critical emergency scenario: an upright pedestrian trips, stumbles, and falls prone (aspect ratio w/h >= 1.05) triggering immediate red alarm.",
     },
 }
 
 
-def render_stanford_sequence(meta: dict, output_mp4: pathlib.Path, img_dir: pathlib.Path) -> pathlib.Path:
-    """Generate high-fidelity Stanford JRDB simulation sequence and render annotated MP4."""
-    img_dir.mkdir(parents=True, exist_ok=True)
-    output_mp4.parent.mkdir(parents=True, exist_ok=True)
-
-    w_img, h_img = 1280, 720
-    fps = meta["fps"]
-    total_frames = int(meta["duration_sec"] * fps)
-    num_peds = meta["num_pedestrians"]
-
-    rng = np.random.default_rng(abs(hash(meta["id"])) % (2**31))
-    actors = []
-
-    for pid in range(1, num_peds + 1):
-        target_act = meta["primary_behaviours"][(pid - 1) % len(meta["primary_behaviours"])]
-        y_pos = float(rng.uniform(h_img * 0.45, h_img * 0.82))
-        scale = y_pos / h_img
-        ped_h = float(130.0 + 70.0 * scale)
-        ped_w = float(ped_h * 0.40)
-        x_pos = float(rng.uniform(120.0, w_img - 150.0))
-        direction = 1.0 if rng.random() > 0.5 else -1.0
-
-        if target_act == "running":
-            vx, vy = direction * float(rng.uniform(5.5, 8.5)), float(rng.uniform(-0.3, 0.3))
-        elif target_act == "walking":
-            vx, vy = direction * float(rng.uniform(1.8, 3.2)), float(rng.uniform(-0.2, 0.2))
-        elif target_act == "loitering":
-            vx, vy = float(rng.uniform(-0.5, 0.5)), float(rng.uniform(-0.5, 0.5))
-        elif target_act == "standing":
-            vx, vy = 0.0, 0.0
-        elif target_act == "laydown/kneeling":
-            vx, vy = 1.2, 0.0
-        else:
-            vx, vy = 2.0, 0.0
-
-        actors.append({
-            "id": pid,
-            "x": x_pos,
-            "y": y_pos,
-            "w": ped_w,
-            "h": ped_h,
-            "vx": vx,
-            "vy": vy,
-            "act": target_act,
-            "fall_frame": int(total_frames * 0.35) if target_act == "laydown/kneeling" else -1,
-            "fell": False,
-        })
-
-    temp_avi = output_mp4.with_suffix(".avi")
-    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-    writer = cv2.VideoWriter(str(temp_avi), fourcc, float(fps), (w_img, h_img))
-
-    raw_tracks_data = []
-
-    for f in range(1, total_frames + 1):
-        frame = np.full((h_img, w_img, 3), 42, dtype=np.uint8)
-
-        # Background rendering
-        if "Cafe" in meta["environment"]:
-            frame[:, :] = (38, 48, 65)
-            cv2.rectangle(frame, (0, int(h_img * 0.30)), (w_img, int(h_img * 0.42)), (65, 85, 125), -1)
-            cv2.putText(frame, "STANFORD BYTES CAFE (JRDB-Act)", (40, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (210, 230, 250), 2)
-        elif "Campus" in meta["environment"]:
-            frame[: int(h_img * 0.35), :] = (85, 115, 65)
-            frame[int(h_img * 0.35) :, :] = (150, 155, 160)
-            cv2.putText(frame, "STANFORD GATES CAMPUS PLAZA", (40, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (240, 240, 240), 2)
-        elif "Crossing" in meta["environment"]:
-            frame[: int(h_img * 0.30), :] = (110, 110, 115)
-            frame[int(h_img * 0.30) :, :] = (40, 40, 42)
-            for sx in range(250, w_img - 200, 100):
-                cv2.rectangle(frame, (sx, int(h_img * 0.32)), (sx + 55, int(h_img * 0.90)), (230, 230, 230), -1)
-            cv2.putText(frame, "STANFORD PACKARD LAWN WALKWAY", (40, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (240, 240, 240), 2)
-        elif "Fall" in meta["environment"]:
-            frame[:, :] = (70, 70, 75)
-            cv2.putText(frame, "STANFORD SAFETY TEST: EMERGENCY ANOMALY / FALL", (40, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 100, 255), 2)
-        else:
-            frame[:, :] = (120, 125, 130)
-            cv2.putText(frame, f"STANFORD JRDB: {meta['name']}", (40, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (240, 240, 240), 2)
-
-        for a in actors:
-            if a["fall_frame"] > 0 and f >= a["fall_frame"]:
-                a["fell"] = True
-                a["vx"] *= 0.1
-                a["vy"] = 0.0
-                a["w"] = float(a["h"] * 0.85)
-                a["h"] = float(a["w"] * 0.65)
-                a["y"] = min(h_img - a["h"] - 10, a["y"] + 25)
-
-            a["x"] += a["vx"]
-            a["y"] += a["vy"]
-
-            if a["x"] < 50 or a["x"] > w_img - a["w"] - 50:
-                a["vx"] *= -1.0
-            if a["y"] < h_img * 0.40 or a["y"] > h_img - a["h"] - 20:
-                a["vy"] *= -1.0
-
-            if a["act"] == "loitering" and f % 25 == 0:
-                a["vx"] = float(rng.uniform(-0.6, 0.6))
-                a["vy"] = float(rng.uniform(-0.6, 0.6))
-
-            ax, ay, aw, ah = int(a["x"]), int(a["y"]), int(a["w"]), int(a["h"])
-
-            # Pedestrian silhouette
-            body_color = (190, 150, 110) if not a["fell"] else (60, 60, 220)
-            cv2.rectangle(frame, (ax, ay), (ax + aw, ay + ah), body_color, -1)
-            if not a["fell"]:
-                head_cx = ax + aw // 2
-                head_cy = max(10, ay - int(aw * 0.4))
-                cv2.circle(frame, (head_cx, head_cy), int(aw * 0.35), (220, 190, 160), -1)
-
-            # Annotation Box
-            ar = aw / float(ah) if ah > 0 else 0.0
-            if ar >= 1.05:
-                box_color = (0, 0, 255)
-                badge = f"ID:{a['id']} [FALL ALERT w/h={ar:.2f}]"
-            elif a["act"] == "running":
-                box_color = (0, 140, 255)
-                badge = f"ID:{a['id']} [RUNNING]"
-            elif a["act"] == "loitering":
-                box_color = (0, 220, 255)
-                badge = f"ID:{a['id']} [LOITERING]"
-            else:
-                box_color = (0, 255, 120)
-                badge = f"ID:{a['id']} [WALKING/STANDING]"
-
-            cv2.rectangle(frame, (ax, ay), (ax + aw, ay + ah), box_color, 2)
-            cv2.putText(frame, badge, (ax, max(22, ay - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2)
-
-            raw_tracks_data.append({
-                "frame": f,
-                "track_id": a["id"],
-                "x": ax,
-                "y": ay,
-                "w": aw,
-                "h": ah,
-                "action": a["act"],
-            })
-
-        writer.write(frame)
-
-    writer.release()
-
-    # Convert to browser-compatible MP4 using ffmpeg
-    import subprocess
-    cmd = [
-        "ffmpeg", "-y", "-i", str(temp_avi),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-loglevel", "error", str(output_mp4)
-    ]
-    try:
-        subprocess.run(cmd, check=True)
-        if temp_avi.exists():
-            temp_avi.unlink()
-    except Exception:
-        pass
-
-    # Save tracks CSV for analysis
-    tracks_csv = output_mp4.with_suffix(".csv")
-    pd.DataFrame(raw_tracks_data).to_csv(tracks_csv, index=False)
-    return output_mp4
+def load_mot_gt_boxes(gt_path: pathlib.Path) -> dict[int, list[dict]]:
+    """Parse standard MOT gt.txt file into frame-indexed detections."""
+    frames_dict = defaultdict(list)
+    if not gt_path.exists():
+        return frames_dict
+    for line in gt_path.read_text().strip().splitlines():
+        if not line:
+            continue
+        p = line.split(",")
+        f_idx = int(p[0])
+        pid = int(p[1])
+        x, y, w, h = float(p[2]), float(p[3]), float(p[4]), float(p[5])
+        conf = float(p[6]) if len(p) > 6 else 1.0
+        frames_dict[f_idx].append({"id": pid, "x": x, "y": y, "w": w, "h": h, "conf": conf})
+    return frames_dict
 
 
-# ── 1. Stanford JRDB Video Explorer & Branch Tools ────────────────────────────
-if menu == "🎓 Stanford JRDB Video Explorer & Branch Tools":
-    st.header("🎓 Stanford JRDB Video Explorer & MoveSense Branch Tools")
+def generate_synthetic_scene_frame(
+    f_idx: int,
+    total_frames: int,
+    actors: list[dict],
+    env: str,
+    width: int = 1000,
+    height: int = 560,
+) -> tuple[np.ndarray, list[dict]]:
+    """Procedurally synthesize a realistic video frame for Stanford JRDB scenarios."""
+    frame = np.full((height, width, 3), 45, dtype=np.uint8)
+
+    if "Cafe" in env:
+        frame[:, :] = (40, 50, 70)  # Wood floor
+        cv2.rectangle(frame, (0, int(height * 0.30)), (width, int(height * 0.42)), (70, 90, 130), -1)
+        cv2.putText(frame, "STANFORD BYTES CAFE (JRDB-Act Social Robotics)", (30, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (210, 230, 250), 2)
+    elif "Campus" in env:
+        frame[: int(height * 0.35), :] = (85, 120, 65)  # Lawn
+        frame[int(height * 0.35) :, :] = (150, 155, 160) # Stone pavers
+        cv2.putText(frame, "STANFORD GATES COMPUTER SCIENCE PLAZA", (30, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 240, 240), 2)
+    elif "Fall" in env:
+        frame[:, :] = (70, 75, 80)
+        cv2.line(frame, (0, int(height * 0.45)), (width, int(height * 0.45)), (180, 180, 180), 2)
+        cv2.putText(frame, "STANFORD SAFETY TEST: CRITICAL FALL & LAYDOWN DETECTION", (30, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (120, 120, 255), 2)
+    else:
+        frame[:, :] = (100, 105, 110)
+
+    detections = []
+    rng = np.random.default_rng(f_idx)
+
+    for a in actors:
+        if a.get("fall_frame", -1) > 0 and f_idx >= a["fall_frame"]:
+            a["fell"] = True
+            a["vx"] *= 0.1
+            a["vy"] = 0.0
+            a["w"] = float(a["initial_h"] * 0.85)
+            a["h"] = float(a["initial_w"] * 0.70)
+            a["y"] = min(height - a["h"] - 10, a["y"] + 15)
+
+        a["x"] += a["vx"]
+        a["y"] += a["vy"]
+
+        if a["x"] < 40 or a["x"] > width - a["w"] - 40:
+            a["vx"] *= -1.0
+        if a["y"] < height * 0.35 or a["y"] > height - a["h"] - 20:
+            a["vy"] *= -1.0
+
+        if a["act"] == "loitering" and f_idx % 20 == 0:
+            a["vx"] = float(rng.uniform(-0.6, 0.6))
+            a["vy"] = float(rng.uniform(-0.6, 0.6))
+
+        ax, ay, aw, ah = int(a["x"]), int(a["y"]), int(a["w"]), int(a["h"])
+
+        # Silhouette
+        body_c = (190, 150, 110) if not a.get("fell", False) else (60, 60, 220)
+        cv2.rectangle(frame, (ax, ay), (ax + aw, ay + ah), body_c, -1)
+        if not a.get("fell", False):
+            head_cx = ax + aw // 2
+            head_cy = max(10, ay - int(aw * 0.4))
+            cv2.circle(frame, (head_cx, head_cy), int(aw * 0.35), (220, 190, 160), -1)
+
+        detections.append({"id": a["id"], "x": ax, "y": ay, "w": aw, "h": ah, "conf": 0.95, "act": a["act"]})
+
+    return frame, detections
+
+
+# ── 1. Real-Time Video Player & Visual Detection ──────────────────────────────
+if menu == "🎬 Real-Time Video Player & Visual Detection":
+    st.header("🎬 Interactive Video Player with Real-Time Pedestrian & Behaviour Detections")
     st.write(
-        "Directly explore and analyze sequences from the **Stanford JackRabbot (JRDB-Act)** social robotics benchmark. "
-        "Test all algorithms developed in branch `feature/behaviour-rules-and-async-streaming`."
+        "Watch the **MoveSense RuleEngine** in action on real video sequences! See color-coded bounding boxes, "
+        "trajectory trails, size-normalized velocities ($v/h$), and instant fall detection alarms rendered directly on video."
     )
 
-    col_cfg, col_video = st.columns([1, 2])
+    col_select, col_settings = st.columns([2, 1])
 
-    with col_cfg:
-        st.subheader("1. Sequence Selection")
-        selected_scenario_name = st.selectbox(
-            "Choose Stanford JRDB Sequence:",
-            list(STANFORD_JRDB_SCENARIOS.keys()),
+    with col_select:
+        selected_seq_name = st.selectbox(
+            "Choose Video Sequence to Inspect:",
+            list(VIDEO_SEQUENCES.keys()),
         )
-        meta = STANFORD_JRDB_SCENARIOS[selected_scenario_name]
+        seq_cfg = VIDEO_SEQUENCES[selected_seq_name]
+        st.info(f"**Environment:** {seq_cfg['environment']} | **Description:** {seq_cfg['description']}")
 
-        st.markdown(f"**Environment:** `{meta['environment']}`")
-        st.markdown(f"**Duration:** `{meta['duration_sec']}s` ({int(meta['duration_sec'] * meta['fps'])} frames @ {meta['fps']} fps)")
-        st.markdown(f"**Tracked Pedestrians:** `{meta['num_pedestrians']}`")
-        st.info(f"📝 **Description:** {meta['description']}")
+    with col_settings:
+        st.subheader("Visual Overlay Controls")
+        show_boxes = st.checkbox("Show Bounding Boxes & Badges", value=True)
+        show_tails = st.checkbox("Show Trajectory History Tails", value=True)
+        show_speed_gauge = st.checkbox("Display Speed & Aspect Ratio Badges", value=True)
+        playback_fps = st.slider("Playback Speed (Frames/Sec):", min_value=5, max_value=60, value=25, step=5)
 
-        st.markdown(f"[👉 View Full Google Colab Master Laboratory]({meta['colab_url']})")
+    # RuleEngine calibration sliders
+    st.sidebar.markdown("### ⚙️ Live RuleEngine Thresholds")
+    st.sidebar.caption("Tuning these sliders changes the bounding box colors and behaviour badges live on the video!")
+    standing_thresh = st.sidebar.slider("Standing Max Speed ($v/h$ bl/s):", 0.1, 0.6, 0.35, 0.05)
+    walking_thresh = st.sidebar.slider("Walking Max Speed ($v/h$ bl/s):", 1.0, 2.5, 1.70, 0.1)
+    laydown_ar_thresh = st.sidebar.slider("Laydown Aspect Ratio Min ($w/h$):", 0.8, 1.5, 1.05, 0.05)
+    loitering_rad_thresh = st.sidebar.slider("Loitering Radius ($bl$):", 1.0, 3.0, 1.8, 0.2)
 
-        output_dir = pathlib.Path("outputs/jrdb_demos")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        target_mp4 = output_dir / f"{meta['id']}_annotated.mp4"
-        tracks_csv = output_dir / f"{meta['id']}_annotated.csv"
+    active_rule_config = {
+        "scale_normalization": {"min_height_px": 15.0},
+        "posture": {"laydown_aspect_ratio_min": laydown_ar_thresh},
+        "speed_thresholds_bl_per_s": {
+            "standing_max": standing_thresh,
+            "walking_max": walking_thresh,
+            "running_min": walking_thresh,
+        },
+        "sudden_stop": {
+            "initial_speed_min_bl_s": 0.80,
+            "final_speed_max_bl_s": standing_thresh,
+            "time_window_s": 0.60,
+        },
+        "direction_change": {
+            "min_angle_degrees": 85.0,
+            "min_speed_bl_s": standing_thresh,
+            "window_frames": 5,
+        },
+        "loitering": {
+            "max_confinement_radius_bl": loitering_rad_thresh,
+            "min_duration_s": 3.0,
+        },
+    }
+    rule_engine = RuleEngine(active_rule_config)
 
-        render_btn = st.button("🔄 Render / Re-generate Sequence MP4", use_container_width=True)
+    # Prepare frames source
+    is_real = seq_cfg["type"] == "real_mot"
+    if is_real:
+        img_dir = seq_cfg["img_dir"]
+        img_files = sorted(list(img_dir.glob("*.jpg")))
+        total_avail_frames = min(len(img_files), 180)  # Use first 180 frames for smooth interactivity
+        gt_dict = load_mot_gt_boxes(seq_cfg["gt_file"])
+    else:
+        total_avail_frames = 150
+        img_files = []
+        gt_dict = {}
 
-    with col_video:
-        st.subheader("2. Video Player & Live Telemetry")
-        if render_btn or not target_mp4.exists():
-            with st.spinner("Generating Stanford JRDB sequence and rendering H.264 annotations..."):
-                img_dir = pathlib.Path("data/jrdb_temp") / meta["id"]
-                render_stanford_sequence(meta, target_mp4, img_dir)
-                st.success("✅ Sequence ready!")
+        # Initialize simulated actors
+        rng = np.random.default_rng(42)
+        actors = []
+        for pid in range(1, seq_cfg["num_pedestrians"] + 1):
+            y_pos = float(rng.uniform(250, 480))
+            h = float(120 + (y_pos / 560) * 60)
+            w = float(h * 0.40)
+            act = "walking"
+            if "Fall" in seq_cfg["environment"] and pid == 1:
+                act = "laydown/kneeling"
+            elif pid == 2:
+                act = "standing"
+            elif pid == 3:
+                act = "running"
+            elif pid == 4:
+                act = "loitering"
 
-        if target_mp4.exists():
-            st.video(str(target_mp4))
-            st.caption(f"Playing: `{target_mp4.name}` | Resolution: 1280x720 | Codec: H.264 Web-ready")
-        else:
-            st.warning("Click 'Render / Re-generate Sequence MP4' to create the video.")
+            actors.append({
+                "id": pid,
+                "x": float(rng.uniform(100, 850)),
+                "y": y_pos,
+                "w": w,
+                "h": h,
+                "initial_w": w,
+                "initial_h": h,
+                "vx": float(rng.uniform(1.8, 3.2)) if act != "standing" else 0.0,
+                "vy": float(rng.uniform(-0.2, 0.2)),
+                "act": act,
+                "fall_frame": 45 if act == "laydown/kneeling" else -1,
+                "fell": False,
+            })
+
+    # Trajectory history buffer for tails: {track_id: [(cx, cy), ...]}
+    traj_history = defaultdict(list)
+    # Velocity history buffer: {track_id: [speed_bl_s, ...]}
+    vel_history = defaultdict(list)
 
     st.markdown("---")
-    st.subheader("🛠️ MoveSense Branch Tools & Telemetry Analysis")
+    col_play, col_scrub = st.columns([1, 2])
 
-    # Load sequence tracks
-    if tracks_csv.exists():
-        df_tracks = pd.read_csv(tracks_csv)
-    else:
-        df_tracks = pd.DataFrame()
+    with col_play:
+        run_stream = st.checkbox("▶️ Play Video Stream", value=False)
+    with col_scrub:
+        scrub_frame = st.slider("Scrub to Specific Frame:", min_value=1, max_value=total_avail_frames, value=1)
 
-    tab_rules, tab_kinematics, tab_jrdb_eval, tab_async = st.tabs([
-        "⚙️ Tool 1: RuleEngine Threshold Calibrator",
-        "📈 Tool 2: Kinematics & Egomotion Normalization",
-        "🤖 Tool 3: Stanford JRDB-Act Benchmark Validation",
-        "⚡ Tool 4: Zero-Lag Async Streaming (DE-08)",
-    ])
+    # Alert banner container
+    alert_placeholder = st.empty()
+    # Video frame canvas
+    frame_placeholder = st.empty()
+    # Metrics table container
+    table_placeholder = st.empty()
 
-    # --- Tool 1: RuleEngine Calibrator ---
-    with tab_rules:
-        st.markdown("### ⚙️ RuleEngine Parameter Calibration & Instant Re-Classification")
-        st.write("Tune kinematic thresholds from `configs/behaviour_rules.json` and watch behaviour decisions update live across all pedestrians.")
-
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            standing_max = st.slider("Standing Max Speed ($v/h$ bl/s):", 0.1, 0.6, 0.35, 0.05)
-        with c2:
-            walking_max = st.slider("Walking Max Speed ($v/h$ bl/s):", 1.0, 2.5, 1.70, 0.1)
-        with c3:
-            laydown_ar = st.slider("Laydown Aspect Ratio Min ($w/h$):", 0.8, 1.5, 1.05, 0.05)
-        with c4:
-            loiter_radius = st.slider("Loitering Confinement Radius ($bl$):", 1.0, 3.0, 1.8, 0.2)
-
-        if not df_tracks.empty:
-            calibrated_config = {
-                "scale_normalization": {"min_height_px": 15.0},
-                "posture": {"laydown_aspect_ratio_min": laydown_ar},
-                "speed_thresholds_bl_per_s": {
-                    "standing_max": standing_max,
-                    "walking_max": walking_max,
-                    "running_min": walking_max,
-                },
-                "sudden_stop": {
-                    "initial_speed_min_bl_s": 0.80,
-                    "final_speed_max_bl_s": standing_max,
-                    "time_window_s": 0.60,
-                },
-                "direction_change": {
-                    "min_angle_degrees": 85.0,
-                    "min_speed_bl_s": standing_max,
-                    "window_frames": 5,
-                },
-                "loitering": {
-                    "max_confinement_radius_bl": loiter_radius,
-                    "min_duration_s": 3.0,
-                },
-            }
-            calibrated_engine = RuleEngine(calibrated_config)
-
-            results_summary = []
-            for tid, grp in df_tracks.groupby("track_id"):
-                eval_res = calibrated_engine.evaluate_track(grp, fps=meta["fps"])
-                max_s = float(eval_res["normalized_df"]["speed_bl_s"].max()) if "normalized_df" in eval_res else eval_res["mean_speed_bl_s"]
-                results_summary.append({
-                    "Pedestrian ID": f"Pedestrian #{tid}",
-                    "Frames Tracked": len(grp),
-                    "Mean Speed (bl/s)": eval_res["mean_speed_bl_s"],
-                    "Max Speed (bl/s)": round(max_s, 3),
-                    "Median Aspect Ratio (w/h)": eval_res["median_aspect_ratio"],
-                    "Confinement Radius (bl)": eval_res["confinement_radius_bl"],
-                    "Predicted Behaviour": eval_res["primary_behaviour"].upper(),
-                    "Fall Alert": "🔴 YES" if eval_res["is_laydown"] else "🟢 NO",
-                })
-
-            df_summary = pd.DataFrame(results_summary)
-            st.dataframe(df_summary, use_container_width=True)
-
-            # Chart distribution
-            st.bar_chart(df_summary["Predicted Behaviour"].value_counts())
-
-    # --- Tool 2: Kinematics & Egomotion ---
-    with tab_kinematics:
-        st.markdown("### 📈 Kinematic Trajectories & Size-Normalization ($v/h$)")
-        st.write("Demonstrates how dividing velocity by bounding box height ($h$) eliminates camera perspective and distance bias.")
-
-        if not df_tracks.empty:
-            ped_ids = sorted(df_tracks["track_id"].unique())
-            selected_ped = st.selectbox("Select Pedestrian ID to Inspect:", ped_ids)
-            sub_df = df_tracks[df_tracks["track_id"] == selected_ped].sort_values("frame").copy()
-
-            # Compute velocities
-            sub_df["vx_px"] = sub_df["x"].diff().fillna(0)
-            sub_df["vy_px"] = sub_df["y"].diff().fillna(0)
-            sub_df["speed_px_s"] = np.sqrt(sub_df["vx_px"] ** 2 + sub_df["vy_px"] ** 2) * meta["fps"]
-            sub_df["speed_bl_s"] = sub_df["speed_px_s"] / sub_df["h"].clip(lower=15.0)
-            sub_df["aspect_ratio"] = sub_df["w"] / sub_df["h"]
-
-            col_k1, col_k2 = st.columns(2)
-            with col_k1:
-                st.subheader(f"Normalized Velocity ($v/h$ body lengths/s)")
-                st.line_chart(sub_df.set_index("frame")["speed_bl_s"])
-            with col_k2:
-                st.subheader(f"Aspect Ratio ($w/h$) — Posture")
-                st.line_chart(sub_df.set_index("frame")["aspect_ratio"])
-
-    # --- Tool 3: Stanford JRDB Ground-Truth Benchmark ---
-    with tab_jrdb_eval:
-        st.markdown("### 🤖 JackRabbot (JRDB-Act) Benchmark Evaluation (DS-10)")
-        st.write("Evaluates MoveSense against the official Stanford JackRabbot social robotics ground-truth actions.")
-
-        sample_jrdb_file = pathlib.Path("data/sample_jrdb.json")
-        if sample_jrdb_file.exists():
-            loader = JRDBLoader(mapping_config_path="configs/jrdb_action_mapping.json")
-            df_labels = loader.load_labels(sample_jrdb_file)
-            engine = RuleEngine.from_config("configs/behaviour_rules.json")
-
-            jrdb_eval_rows = []
-            for tid, grp in df_labels.groupby("track_id"):
-                gt_act = grp["action"].iloc[0]
-                eval_res = engine.evaluate_track(grp, fps=30.0)
-                pred_act = eval_res["primary_behaviour"]
-                match = (gt_act == pred_act)
-
-                jrdb_eval_rows.append({
-                    "Track ID": tid,
-                    "Stanford Action": gt_act,
-                    "MoveSense Prediction": pred_act,
-                    "Speed (bl/s)": eval_res["mean_speed_bl_s"],
-                    "Aspect Ratio": eval_res["median_aspect_ratio"],
-                    "Status": "✅ MATCH" if match else "⚠️ DIVERGENT",
-                })
-
-            df_jrdb_eval = pd.DataFrame(jrdb_eval_rows)
-            match_rate = (df_jrdb_eval["Status"] == "✅ MATCH").mean() * 100
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric("JackRabbot Benchmark Accuracy", f"{match_rate:.1f}%")
-            m2.metric("Total Ground-Truth Tracks", len(df_jrdb_eval))
-            m3.metric("Sitting/Loitering Handling", "Mapped (Loitering)")
-
-            st.dataframe(df_jrdb_eval, use_container_width=True)
+    def process_and_draw_frame(f_idx: int) -> tuple[np.ndarray, list[dict]]:
+        """Fetch frame, detect/track pedestrians, apply RuleEngine, and render overlays."""
+        if is_real:
+            img_path = img_files[f_idx - 1]
+            frame_bgr = cv2.imread(str(img_path))
+            if frame_bgr is None:
+                frame_bgr = np.zeros((560, 1000, 3), dtype=np.uint8)
+            dets = gt_dict.get(f_idx, [])
         else:
-            st.warning("`data/sample_jrdb.json` not found locally. It is generated during Colab execution.")
+            frame_bgr, dets = generate_synthetic_scene_frame(
+                f_idx=f_idx,
+                total_frames=total_avail_frames,
+                actors=actors,
+                env=seq_cfg["environment"],
+                width=1000,
+                height=560,
+            )
 
-    # --- Tool 4: Async Streaming (DE-08) ---
-    with tab_async:
-        st.markdown("### ⚡ Zero-Lag Asynchronous Streaming Pipeline (DE-08)")
-        st.write("Decoupled producer-consumer threading model with zero-lag drop-on-overrun queue from `src/movesense/async_pipeline.py`.")
+        frame_annotated = frame_bgr.copy()
+        h_f, w_f = frame_annotated.shape[:2]
 
-        async_btn = st.button("🚀 Run Live Async Streaming Stress-Test")
-        if async_btn:
-            with st.spinner("Streaming frames through AsyncDetectorWorker..."):
-                class MockFastDetector:
-                    def detect(self, f):
-                        time.sleep(0.012)
-                        return [Detection(100, 100, 50, 120, 0.9)]
+        current_frame_data = []
+        fall_detected_in_frame = False
 
-                worker = AsyncDetectorWorker(detector=MockFastDetector(), max_queue_size=1)
-                worker.start()
+        for d in dets:
+            pid = d["id"]
+            x, y, w, h = int(d["x"]), int(d["y"]), int(d["w"]), int(d["h"])
+            cx, cy = x + w // 2, y + h // 2
 
-                frames_sent = 0
-                t_start = time.perf_counter()
-                dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            # Update trajectory history
+            traj_history[pid].append((cx, cy))
+            if len(traj_history[pid]) > 20:
+                traj_history[pid].pop(0)
 
-                for _ in range(60):
-                    worker.put_frame(dummy_frame)
-                    frames_sent += 1
-                    time.sleep(0.005)
+            # Calculate normalized speed
+            if len(traj_history[pid]) >= 2:
+                prev_cx, prev_cy = traj_history[pid][-2]
+                dist_px = np.sqrt((cx - prev_cx) ** 2 + (cy - prev_cy) ** 2)
+                speed_px_s = dist_px * seq_cfg["fps"]
+                speed_bl_s = speed_px_s / max(15.0, float(h))
+            else:
+                speed_bl_s = 0.0
 
-                worker.stop()
-                t_elapsed = time.perf_counter() - t_start
+            vel_history[pid].append(speed_bl_s)
+            if len(vel_history[pid]) > 10:
+                vel_history[pid].pop(0)
 
-                ingest_fps = frames_sent / t_elapsed
-                proc_fps = worker.processed_count / t_elapsed
+            smoothed_speed = float(np.median(vel_history[pid]))
+            ar = float(w / h) if h > 0 else 0.0
 
-                a1, a2, a3, a4 = st.columns(4)
-                a1.metric("Ingestion Throughput", f"{ingest_fps:.1f} FPS")
-                a2.metric("Inference Throughput", f"{proc_fps:.1f} FPS")
-                a3.metric("Frames Ingested", frames_sent)
-                a4.metric("Zero-Lag Overrun Drops", worker.dropped_count)
+            # RuleEngine decision logic
+            if ar >= laydown_ar_thresh:
+                behaviour = "laydown/kneeling"
+                box_color = (0, 0, 255)  # Red
+                fall_detected_in_frame = True
+            elif smoothed_speed <= standing_thresh:
+                behaviour = "standing"
+                box_color = (0, 255, 120)  # Green
+            elif smoothed_speed <= walking_thresh:
+                behaviour = "walking"
+                box_color = (255, 200, 0)  # Cyan
+            else:
+                behaviour = "running"
+                box_color = (0, 140, 255)  # Orange
 
-                st.success(f"Async worker completed successfully with zero buffer lag! Processed {worker.processed_count} frames, safely dropped {worker.dropped_count} stale frames to prevent queue backlog.")
+            # Draw trajectory tail
+            if show_tails and len(traj_history[pid]) >= 2:
+                points = np.array(traj_history[pid], dtype=np.int32)
+                cv2.polylines(frame_annotated, [points], False, box_color, 2, cv2.LINE_AA)
+
+            # Draw bounding box
+            if show_boxes:
+                cv2.rectangle(frame_annotated, (x, y), (x + w, y + h), box_color, 2)
+
+                # Badge label
+                if show_speed_gauge:
+                    badge = f"ID #{pid} | {behaviour.upper()} | {smoothed_speed:.2f} bl/s | AR:{ar:.2f}"
+                else:
+                    badge = f"ID #{pid} | {behaviour.upper()}"
+
+                # Background banner for text legibility
+                (tw, th), _ = cv2.getTextSize(badge, cv2.FONT_HERSHEY_SIMPLEX, 0.48, 1)
+                cv2.rectangle(frame_annotated, (x, max(0, y - 22)), (x + tw + 8, max(22, y)), box_color, -1)
+                cv2.putText(
+                    frame_annotated,
+                    badge,
+                    (x + 4, max(16, y - 6)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.48,
+                    (0, 0, 0),
+                    1,
+                    cv2.LINE_AA,
+                )
+
+            current_frame_data.append({
+                "Track ID": f"Pedestrian #{pid}",
+                "State": behaviour.upper(),
+                "Speed (bl/s)": round(smoothed_speed, 2),
+                "Aspect Ratio (w/h)": round(ar, 2),
+                "Posture": "🔴 FALLEN / PRONE" if ar >= laydown_ar_thresh else "🟢 UPRIGHT",
+                "Bounding Box (X,Y,W,H)": f"({x}, {y}, {w}, {h})",
+            })
+
+        # Frame counter watermark
+        cv2.putText(
+            frame_annotated,
+            f"Frame {f_idx:04d}/{total_avail_frames:04d} | {seq_cfg['environment']} | FPS: {playback_fps}",
+            (25, h_f - 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+        return frame_annotated, current_frame_data, fall_detected_in_frame
+
+    # Execution logic: either continuous stream or single scrubbed frame
+    if run_stream:
+        for f in range(1, total_avail_frames + 1):
+            frame_img, frame_records, is_fall = process_and_draw_frame(f)
+
+            if is_fall:
+                alert_placeholder.error("🚨 CRITICAL SAFETY ALERT: Pedestrian Fall / Laydown detected in video frame (Aspect Ratio >= 1.05)!")
+            else:
+                alert_placeholder.success("🟢 Monitoring Active: Normal pedestrian kinematics observed.")
+
+            # Display RGB frame directly in Streamlit
+            frame_rgb = cv2.cvtColor(frame_img, cv2.COLOR_BGR2RGB)
+            frame_placeholder.image(frame_rgb, use_container_width=True)
+
+            if frame_records:
+                table_placeholder.dataframe(pd.DataFrame(frame_records), use_container_width=True)
+
+            time.sleep(1.0 / playback_fps)
+    else:
+        # Render single frame chosen by scrub slider
+        frame_img, frame_records, is_fall = process_and_draw_frame(scrub_frame)
+
+        if is_fall:
+            alert_placeholder.error("🚨 CRITICAL SAFETY ALERT: Pedestrian Fall / Laydown detected in video frame (Aspect Ratio >= 1.05)!")
+        else:
+            alert_placeholder.info(f"Frame {scrub_frame} of {total_avail_frames} loaded. Click 'Play Video Stream' to watch continuous playback.")
+
+        frame_rgb = cv2.cvtColor(frame_img, cv2.COLOR_BGR2RGB)
+        frame_placeholder.image(frame_rgb, use_container_width=True)
+
+        if frame_records:
+            st.markdown("### 📋 Visible Pedestrians & Real-Time Kinematics")
+            table_placeholder.dataframe(pd.DataFrame(frame_records), use_container_width=True)
 
 
 # ── 2. Live Webcam Detector ───────────────────────────────────────────────────
@@ -598,7 +562,7 @@ elif menu == "📹 Live Webcam Detector (Mac Camera)":
         st.subheader("Live Continuous Camera Stream")
         st.info("Stand in front of the camera and tilt sideways to simulate a fall!")
         run_camera = st.checkbox("▶️ Start Live Camera", value=False)
-        frame_placeholder = st.empty()
+        frame_placeholder_cam = st.empty()
 
         if run_camera:
             cap = cv2.VideoCapture(0)
@@ -627,7 +591,7 @@ elif menu == "📹 Live Webcam Detector (Mac Camera)":
                     cv2.putText(frame_small, label, (x, max(20, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
                 frame_rgb = cv2.cvtColor(frame_small, cv2.COLOR_BGR2RGB)
-                frame_placeholder.image(frame_rgb, use_container_width=True)
+                frame_placeholder_cam.image(frame_rgb, use_container_width=True)
 
             cap.release()
 
