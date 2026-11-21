@@ -1,0 +1,35 @@
+{
+  "sequence_name": "stanford_campus_sample",
+  "fps": 30.0,
+  "description": "Amostra representativa do JackRabbot Dataset (JRDB-Act) para benchmark de acoes.",
+  "labels": {
+    "000001.jpg": [
+      {"box": [100.0, 200.0, 45.0, 130.0], "label_id": "pedestrian:1", "action": "walking"},
+      {"box": [300.0, 400.0, 120.0, 80.0], "label_id": "pedestrian:2", "action": "kneeling"},
+      {"box": [500.0, 250.0, 40.0, 135.0], "label_id": "pedestrian:3", "action": "standing"},
+      {"box": [150.0, 100.0, 50.0, 125.0], "label_id": "pedestrian:4", "action": "running"},
+      {"box": [600.0, 300.0, 42.0, 128.0], "label_id": "pedestrian:5", "action": "loitering"}
+    ],
+    "000015.jpg": [
+      {"box": [135.0, 200.0, 45.0, 130.0], "label_id": "pedestrian:1", "action": "walking"},
+      {"box": [300.0, 400.0, 120.0, 80.0], "label_id": "pedestrian:2", "action": "kneeling"},
+      {"box": [500.0, 250.0, 40.0, 135.0], "label_id": "pedestrian:3", "action": "standing"},
+      {"box": [220.0, 100.0, 50.0, 125.0], "label_id": "pedestrian:4", "action": "running"},
+      {"box": [605.0, 305.0, 42.0, 128.0], "label_id": "pedestrian:5", "action": "loitering"}
+    ],
+    "000030.jpg": [
+      {"box": [170.0, 200.0, 45.0, 130.0], "label_id": "pedestrian:1", "action": "walking"},
+      {"box": [300.0, 400.0, 120.0, 80.0], "label_id": "pedestrian:2", "action": "kneeling"},
+      {"box": [500.0, 250.0, 40.0, 135.0], "label_id": "pedestrian:3", "action": "standing"},
+      {"box": [300.0, 100.0, 50.0, 125.0], "label_id": "pedestrian:4", "action": "running"},
+      {"box": [598.0, 298.0, 42.0, 128.0], "label_id": "pedestrian:5", "action": "loitering"}
+    ],
+    "000095.jpg": [
+      {"box": [320.0, 200.0, 45.0, 130.0], "label_id": "pedestrian:1", "action": "walking"},
+      {"box": [300.0, 400.0, 120.0, 80.0], "label_id": "pedestrian:2", "action": "kneeling"},
+      {"box": [500.0, 250.0, 40.0, 135.0], "label_id": "pedestrian:3", "action": "standing"},
+      {"box": [580.0, 100.0, 50.0, 125.0], "label_id": "pedestrian:4", "action": "running"},
+      {"box": [602.0, 302.0, 42.0, 128.0], "label_id": "pedestrian:5", "action": "loitering"}
+    ]
+  }
+}

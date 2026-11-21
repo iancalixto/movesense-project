@@ -5,8 +5,11 @@ dist/
 build/
 .venv/
 venv/
-data/
+data/*
+!data/sample_jrdb.json
+!data/.gitkeep
 weights/
+outputs/
 outputs_local/
 workbook/
 .DS_Store
