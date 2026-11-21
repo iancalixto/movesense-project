@@ -358,27 +358,44 @@ if menu == "🎓 Stanford JRDB Video Explorer & Branch Tools":
             loiter_radius = st.slider("Loitering Confinement Radius ($bl$):", 1.0, 3.0, 1.8, 0.2)
 
         if not df_tracks.empty:
-            calibrated_engine = RuleEngine(
-                min_height_px=15.0,
-                standing_max_bl_s=standing_max,
-                walking_max_bl_s=walking_max,
-                running_min_bl_s=walking_max,
-                laydown_ar_min=laydown_ar,
-                loitering_max_radius_bl=loiter_radius,
-            )
+            calibrated_config = {
+                "scale_normalization": {"min_height_px": 15.0},
+                "posture": {"laydown_aspect_ratio_min": laydown_ar},
+                "speed_thresholds_bl_per_s": {
+                    "standing_max": standing_max,
+                    "walking_max": walking_max,
+                    "running_min": walking_max,
+                },
+                "sudden_stop": {
+                    "initial_speed_min_bl_s": 0.80,
+                    "final_speed_max_bl_s": standing_max,
+                    "time_window_s": 0.60,
+                },
+                "direction_change": {
+                    "min_angle_degrees": 85.0,
+                    "min_speed_bl_s": standing_max,
+                    "window_frames": 5,
+                },
+                "loitering": {
+                    "max_confinement_radius_bl": loiter_radius,
+                    "min_duration_s": 3.0,
+                },
+            }
+            calibrated_engine = RuleEngine(calibrated_config)
 
             results_summary = []
             for tid, grp in df_tracks.groupby("track_id"):
                 eval_res = calibrated_engine.evaluate_track(grp, fps=meta["fps"])
+                max_s = float(eval_res["normalized_df"]["speed_bl_s"].max()) if "normalized_df" in eval_res else eval_res["mean_speed_bl_s"]
                 results_summary.append({
                     "Pedestrian ID": f"Pedestrian #{tid}",
                     "Frames Tracked": len(grp),
                     "Mean Speed (bl/s)": eval_res["mean_speed_bl_s"],
-                    "Max Speed (bl/s)": eval_res["max_speed_bl_s"],
+                    "Max Speed (bl/s)": round(max_s, 3),
                     "Median Aspect Ratio (w/h)": eval_res["median_aspect_ratio"],
                     "Confinement Radius (bl)": eval_res["confinement_radius_bl"],
                     "Predicted Behaviour": eval_res["primary_behaviour"].upper(),
-                    "Fall Alert": "🔴 YES" if eval_res["aspect_ratio_flag"] else "🟢 NO",
+                    "Fall Alert": "🔴 YES" if eval_res["is_laydown"] else "🟢 NO",
                 })
 
             df_summary = pd.DataFrame(results_summary)
